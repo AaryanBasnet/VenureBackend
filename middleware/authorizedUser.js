@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const user = require("../model/user");
+const User = require("../model/user");
 
 exports.authenticateUser = async (req, res) => {
   try {
@@ -30,3 +30,21 @@ exports.authenticateUser = async (req, res) => {
     });
   }
 };
+
+exports.getOneUser = async (req, res) => {
+    try{    
+        const _id = req.params.id // use mongo id
+        const user = await User.findById(_id)
+        return res.status(200).json(
+            {
+                "success": true,
+                "message": "One user fetched",
+                "data": user
+            }
+        )
+    }catch(err){
+        return res.status(500).json(
+            {"success": false, "message": "Server Error"}
+        )
+    }
+}
