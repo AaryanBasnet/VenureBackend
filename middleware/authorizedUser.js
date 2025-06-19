@@ -1,50 +1,35 @@
-const jwt = require("jsonwebtoken");
 const User = require("../model/user");
+const jwt = require("jsonwebtoken");
 
-exports.authenticateUser = async (req, res) => {
+exports.authenticateUser = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
   try {
-    const authHeader = req.headers.authorization;
-
     if (!authHeader || !authHeader.startsWith("Bearer")) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required. Please Provide a valid token",
-      });
+      return res.status(401).json({ success: false, msg: "Access Denied" });
     }
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded._id).select("-password");
-
+    const token = authHeader.split(" ")[1];
+    const verifyToken = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findOne({ _id: verifyToken._id });
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found or token is invalid",
-      });
+      return res
+        .status(401)
+        .json({ success: false, message: "Token mismatch" });
     }
     req.user = user;
     next();
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Server Authentication error",
-    });
+  } catch (e) {
+    return res
+      .status(500)
+      .json({ success: false, msg: "Internal Server Error" });
   }
 };
 
-exports.getOneUser = async (req, res) => {
-    try{    
-        const _id = req.params.id // use mongo id
-        const user = await User.findById(_id)
-        return res.status(200).json(
-            {
-                "success": true,
-                "message": "One user fetched",
-                "data": user
-            }
-        )
-    }catch(err){
-        return res.status(500).json(
-            {"success": false, "message": "Server Error"}
-        )
-    }
-}
+exports.isAdmin = async (req, res, next) => {
+  if (req.user && req.user.role === "Admin") {
+    next();
+  } else {
+    return res
+      .status(403)
+      .json({ success: false, message: "Admin privilage required" });
+  }
+};

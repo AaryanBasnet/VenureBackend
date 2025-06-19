@@ -3,7 +3,8 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./database/db");
 const authRoutes = require("./route/authRoutes");
-const venueRoutes = require("./route/venueOwnerRoutes/venueRoutes")
+const venueRoutes = require("./route/venueOwnerRoutes/venueRoutes");
+const adminUserRoutes = require("./route/admin/adminUserRoute");
 
 const app = express();
 const PORT = process.env.PORT;
@@ -21,9 +22,8 @@ app.use(express.json());
 connectDB();
 
 app.use("/api/auth", authRoutes);
-app.use("/api/venueOwner/venues", venueRoutes)
-
-
+app.use("/api/venueOwner/venues", venueRoutes);
+app.use("/api/admin/user", adminUserRoutes);
 
 app.listen(PORT, () => {
   console.log(`server runnning on port ${PORT}`);
