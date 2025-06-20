@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { getUsers, getOneUser } = require("../../controller/admin/userManagement");
+const { getUsers, getOneUser, deleteUser } = require("../../controller/admin/userManagement");
 
 const {
   authenticateUser,
@@ -15,4 +15,10 @@ router.get(
     getOneUser
 )
 
+
+router.delete(
+    "/:id", 
+    deleteUser)
+    
+    // req.params.id    )
 module.exports = router
