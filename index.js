@@ -6,7 +6,7 @@ const authRoutes = require("./route/authRoutes");
 const venueRoutes = require("./route/venueOwnerRoutes/venueRoutes");
 const adminUserRoutes = require("./route/admin/adminUserRoute");
 const bookingRoutes = require("./route/bookingRoutes");
-
+const path = require("path");
 const app = express();
 const PORT = process.env.PORT;
 
@@ -21,6 +21,8 @@ app.use(cors(corsOption));
 app.use(express.json());
 
 connectDB();
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/venueOwner/venues", venueRoutes);

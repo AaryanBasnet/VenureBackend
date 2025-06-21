@@ -23,14 +23,10 @@ const VenueSchema = new mongoose.Schema(
     },
 
     location: {
-      address: { type: String },
-      city: { type: String },
-      state: { type: String },
-      country: { type: String },
-    //   coordinates: {
-    //     lat: { type: Number },
-    //     lng: { type: Number },
-    //   },
+      address: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      country: { type: String, required: true },
     },
 
     capacity: {

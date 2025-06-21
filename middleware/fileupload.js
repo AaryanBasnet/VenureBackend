@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
       uploadPath = "uploads/users";
     } else if (file.fieldname === "venueImages") {
       // ✅ Use venue ID from URL param or pre-generated temp ID
-      const venueId = req.body.venueId || req.params.venueId;
+      const venueId = req.params.venueId || req.params.id || req.body.venueId;
       uploadPath = `uploads/venues/${venueId}`;
     }
 
