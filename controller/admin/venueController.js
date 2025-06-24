@@ -9,13 +9,12 @@ exports.getAllVenues = async (req, res) => {
   }
 };
 
+
+
 exports.updateVenueStatus = async (req, res) => {
- console.log("PATCH request received for ID:", req.params.id);
-  console.log("req.body:", req.body); // Log entire body
  const { id } = req.params;
 
   const status = req.body.status;
-  console.log("Extracted status:", status); // Log extracted status
 
   if (!["approved", "rejected", "pending"].includes(status)) {
     console.log("Invalid status received!");

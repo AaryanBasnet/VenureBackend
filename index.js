@@ -7,6 +7,7 @@ const venueRoutes = require("./route/venueOwnerRoutes/venueRoutes");
 const adminUserRoutes = require("./route/admin/adminUserRoute");
 const bookingRoutes = require("./route/bookingRoutes");
 const adminVenueRoutes = require("./route/admin/venueApprovalRoutes");
+const userVenueRoutes = require("./route/user/userVenueRoute");
 const path = require("path");
 const app = express();
 const PORT = process.env.PORT;
@@ -30,6 +31,8 @@ app.use("/api/venueOwner/venues", venueRoutes);
 app.use("/api/admin/user", adminUserRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/admin/venues", adminVenueRoutes);
+
+app.use("/api/user/venues",userVenueRoutes);
 
 app.listen(PORT, () => {
   console.log(`server runnning on port ${PORT}`);

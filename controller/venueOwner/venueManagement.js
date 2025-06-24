@@ -16,7 +16,6 @@ function deleteImages(images = []) {
 
 // -------------------- CREATE VENUE --------------------
 exports.createVenue = async (req, res) => {
-  console.log("Received body in createVenue:", req.body);
 
   try {
     const {
@@ -33,7 +32,6 @@ exports.createVenue = async (req, res) => {
       location,
     } = req.body;
 
-    // Parse amenities safely
     let parsedAmenities = [];
     if (amenities) {
       if (typeof amenities === "string") {
@@ -48,7 +46,6 @@ exports.createVenue = async (req, res) => {
       }
     }
 
-    // Parse location safely
     let parsedLocation = {};
     if (typeof location === "string") {
       try {
@@ -61,7 +58,6 @@ exports.createVenue = async (req, res) => {
       parsedLocation = location;
     }
 
-    // Fallback to flat fields if location is incomplete
     if (
       !parsedLocation.address ||
       !parsedLocation.city ||
@@ -76,9 +72,7 @@ exports.createVenue = async (req, res) => {
       };
     }
 
-    console.log("Final parsedLocation:", parsedLocation);
 
-    // Final venue creation
     const venue = new Venue({
       venueName,
       capacity,
