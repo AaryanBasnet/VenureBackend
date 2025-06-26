@@ -17,6 +17,50 @@ const getCustomerBookingCount = async (req, res) => {
   }
 };
 
+const createBooking = async (req, res) => {
+  try {
+    const {
+      customer,
+      venue,
+      bookingDate,
+      timeSlot,
+      hoursBooked,
+      numberOfGuests,
+      eventType,
+      specialRequirements,
+      contactName,
+      phoneNumber,
+      selectedAddons,
+      totalPrice,
+      paymentDetails,
+    } = req.body;
+
+    // Validation can be added here
+
+    const booking = new Booking({
+      customer,
+      venue,
+      bookingDate,
+      timeSlot,
+      hoursBooked,
+      numberOfGuests,
+      eventType,
+      specialRequirements,
+      contactName,
+      phoneNumber,
+      selectedAddons,
+      totalPrice,
+      paymentDetails,
+    });
+
+    const savedBooking = await booking.save();
+    res.status(201).json({ message: "Booking created", booking: savedBooking });
+  } catch (error) {
+    res.status(500).json({ message: "Booking creation failed", error: error.message });
+  }
+};
+
 module.exports = {
   getCustomerBookingCount,
+  createBooking
 };
