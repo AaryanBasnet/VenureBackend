@@ -64,7 +64,6 @@ exports.getOneUser = async (req, res) => {
   }
 };
 
-
 exports.deleteUser = async (req, res) => {
   const _id = req.params.id;
   try {
@@ -76,5 +75,19 @@ exports.deleteUser = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, msg: "Internal Server Error" });
+  }
+};
+
+exports.getTotalCustomers = async (req, res) => {
+  try {
+    const totalCustomers = await User.countDocuments({ role: "Customer" }); // or "customer" based on your schema
+
+    res.status(200).json({
+      success: true,
+      totalCustomers,
+    });
+  } catch (error) {
+    console.error("Error fetching total customers", error);
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };

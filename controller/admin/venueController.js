@@ -9,10 +9,8 @@ exports.getAllVenues = async (req, res) => {
   }
 };
 
-
-
 exports.updateVenueStatus = async (req, res) => {
- const { id } = req.params;
+  const { id } = req.params;
 
   const status = req.body.status;
 
@@ -29,7 +27,9 @@ exports.updateVenueStatus = async (req, res) => {
     );
 
     if (!updatedVenue) {
-      return res.status(404).json({ success: false, message: "Venue not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Venue not found" });
     }
 
     res.status(200).json({ success: true, data: updatedVenue });
@@ -38,4 +38,3 @@ exports.updateVenueStatus = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
