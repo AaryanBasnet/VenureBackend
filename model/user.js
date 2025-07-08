@@ -22,6 +22,12 @@ const userSchema = new mongoose.Schema({
         default: "Customer"
     },
     phone: String,
+    favorites: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Venue"
+        }
+    ],
     createdAt: {
         type: Date,
         default: Date.now
