@@ -1,5 +1,5 @@
 const Chat = require("../model/chat");
-
+ const mongoose = require("mongoose")
 const getUserChats = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -28,13 +28,28 @@ const getOrCreateChat = async (req, res) => {
   const userId = req.user._id;
 
   try {
+    // Convert string IDs to ObjectId explicitly
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const participantObjectId = new mongoose.Types.ObjectId(participantId);
+    const venueObjectId = new mongoose.Types.ObjectId(venueId);
+     // Debug log here:
+    console.log('Searching chat with:', {
+      userObjectId: userObjectId.toString(),
+      participantObjectId: participantObjectId.toString(),
+      venueObjectId: venueObjectId.toString(),
+    });
+
+    // Correct query key should be 'venueId', not 'venueObjectId'
     let chat = await Chat.findOne({
-      participants: { $all: [userId, participantId] },
-      venueId,
+      participants: { $all: [userObjectId, participantObjectId] },
+      venueId: venueObjectId,
     });
 
     if (!chat) {
-      chat = new Chat({ participants: [userId, participantId], venueId });
+      chat = new Chat({
+        participants: [userObjectId, participantObjectId],
+        venueId: venueObjectId,
+      });
       await chat.save();
     }
 

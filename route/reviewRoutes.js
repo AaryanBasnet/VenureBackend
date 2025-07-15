@@ -1,17 +1,22 @@
 const express = require("express");
 const router = express.Router();
 const reviewController = require("../controller/reviewController");
-const { authenticateUser } = require("../middleware/authorizedUser");
+const { authenticateUser, isOwner, isAdmin } = require("../middleware/authorizedUser");
 
-router.get("/owner/reviews", authenticateUser, reviewController.getReviewsForOwnerVenues);
+router.get(
+  "/owner/reviews",
+  authenticateUser,
+  isOwner,
+  reviewController.getReviewsForOwnerVenues
+);
 
-router.post("/:id/reviews", authenticateUser, reviewController.addReview)
-router.get("/:id/reviews", reviewController.getReviews);
+router.post("/:id/reviews", authenticateUser, reviewController.addReview);
+router.get("/:id/reviews",  reviewController.getReviews);
 router.delete(
-      "/:venueId/reviews/:reviewId",
-      authenticateUser,
-      reviewController.deleteReview
+  "/:venueId/reviews/:reviewId",
+  authenticateUser,
+  isOwner,
+  reviewController.deleteReview
+);
 
-)
-router.get("/owner/reviews", authenticateUser, reviewController.getReviewsForOwnerVenues);
 module.exports = router;

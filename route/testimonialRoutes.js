@@ -7,11 +7,11 @@ const {
   getBookedVenuesForTestimonial,
 } = require("../controller/testimonialController");
 
-const { authenticateUser } = require("../middleware/authorizedUser");
+const { authenticateUser, isAdmin } = require("../middleware/authorizedUser");
 
 router.post("/", authenticateUser, createTestimonial);
 router.get("/my-venues", authenticateUser, getBookedVenuesForTestimonial);
 router.get("/highest-rated", getTopTestimonial);
-router.get("/admin", authenticateUser, getAllTestimonials);
+router.get("/admin", authenticateUser, isAdmin, getAllTestimonials);
 
 module.exports = router;

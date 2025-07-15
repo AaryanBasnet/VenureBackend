@@ -38,6 +38,20 @@ const createBooking = async (req, res) => {
       paymentDetails,
     } = req.body;
 
+    const conflict = await Booking.findOne({
+      venue,
+      bookingDate: new Date(bookingDate),
+      timeSlot,
+      status: { $in: ["booked", "approved"] },
+    });
+
+    if (conflict) {
+      return res.status(400).json({
+        success: false,
+        message: "This time slot is already booked for the selected venue.",
+      });
+    }
+
     // Validation can be added here
 
     const booking = new Booking({
@@ -103,8 +117,6 @@ const cancelBooking = async (req, res) => {
         .json({ success: false, message: "Booking not found" });
     }
 
-    // Optional: check if user is owner of venue or authorized here
-
     booking.status = "cancelled";
     await booking.save();
 
@@ -130,8 +142,6 @@ const approveBooking = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Booking not found" });
     }
-
-    // Optional: check if user is owner of venue or authorized here
 
     booking.status = "approved";
     await booking.save();

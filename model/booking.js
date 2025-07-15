@@ -17,7 +17,7 @@ const bookingSchema = new mongoose.Schema(
       required: true,
     },
     timeSlot: {
-      type: String, // e.g., "slot1", "slot2"
+      type: String, 
       required: true,
     },
     hoursBooked: {

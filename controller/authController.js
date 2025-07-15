@@ -7,6 +7,12 @@ const registerUser = async (req, res) => {
   try {
     const { name, email, phone, role, password } = req.body;
 
+    if (!name || !email || !password || !phone ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required" });
+    }
+
     const existingUser = await User.findOne({ email });
 
     if (existingUser) {
