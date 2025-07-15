@@ -1,15 +1,18 @@
-const Message = require("../model/message")
+const Message = require("../model/message");
 const Chat = require("../model/chat");
+const Notification = require("../model/notification");
 
 function setupSocket(server) {
   const io = require("socket.io")(server, {
     cors: {
-      origin: "*",
+      origin: "*", // change to your frontend origin in production
+      methods: ["GET", "POST"],
+      credentials: true,
     },
   });
 
   io.on("connection", (socket) => {
-    console.log("New socket connection");
+    console.log("New socket connection:", socket.id);
 
     socket.on("join", (userId) => {
       socket.join(userId);
@@ -29,12 +32,23 @@ function setupSocket(server) {
         text,
         timestamp: new Date(),
       });
+
+      const notification = await Notification.create({
+        recipient: receiver,
+        type: "chat",
+        message: `New message from ${sender}`,
+        link: `/chat/${chatId}`,
+      });
+
+      io.to(receiver).emit("newNotification", notification);
     });
 
     socket.on("disconnect", () => {
-      console.log("User disconnected");
+      console.log("User disconnected:", socket.id);
     });
   });
+
+  return io;
 }
 
 module.exports = setupSocket;
