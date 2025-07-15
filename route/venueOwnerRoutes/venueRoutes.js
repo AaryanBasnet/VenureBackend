@@ -4,9 +4,19 @@ const express = require("express");
 const router = express.Router();
 const venueController = require("../../controller/venueOwner/venueManagement");
 const upload = require("../../middleware/fileupload"); // your multer config
+const { authenticateUser } = require("../../middleware/authorizedUser");
+
+router.get(
+  "/approvedCountByOwner",
+
+  venueController.getApprovedVenueCountByOwner
+);
 
 // 1. Create venue (without images)
-router.post("/", venueController.createVenue);
+router.post("/",
+  authenticateUser,
+  
+  venueController.createVenue);
 
 // 2. Upload images for a venue (max 10 files)
 router.post(

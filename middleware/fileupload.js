@@ -1,4 +1,3 @@
-// upload.js
 const multer = require("multer");
 const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");

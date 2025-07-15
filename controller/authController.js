@@ -1,6 +1,7 @@
 const User = require("../model/user");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const ActivityLog = require("../model/activityLog");
 
 const registerUser = async (req, res) => {
   try {
@@ -25,6 +26,14 @@ const registerUser = async (req, res) => {
     });
 
     await newUser.save();
+
+    // ✅ Add activity log
+    await ActivityLog.create({
+      message: `New user registration: ${newUser.name}`,
+      icon: "UserPlusIcon",
+      color: "text-green-600",
+      type: "registration",
+    });
 
     res.status(201).json({
       success: true,

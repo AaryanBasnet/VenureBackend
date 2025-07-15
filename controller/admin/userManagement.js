@@ -7,42 +7,49 @@ exports.getUsers = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const search = req.query.search?.trim() || "";
 
-    // Fetch users with pagination
-    const users = await User.find({}).skip(skip).limit(limit).lean(); // use lean to get plain JS objects for aggregation
+    // Build filter query
+    const filter = search
+      ? {
+          $or: [
+            { name: { $regex: search, $options: "i" } },
+            { email: { $regex: search, $options: "i" } },
+          ],
+        }
+      : {};
 
-    // Get user IDs for aggregation
+    // Fetch users with pagination and search
+    const users = await User.find(filter).skip(skip).limit(limit).lean();
+
+    // Get user IDs for bookings aggregation
     const userIds = users.map((u) => u._id);
 
-    // Aggregate booking counts per user
+    // Aggregate bookings count
     const bookingsCount = await Booking.aggregate([
       { $match: { customer: { $in: userIds } } },
       { $group: { _id: "$customer", count: { $sum: 1 } } },
     ]);
 
-    // Map booking counts by user id for quick lookup
+    // Map booking counts
     const bookingCountMap = {};
     bookingsCount.forEach((b) => {
       bookingCountMap[b._id.toString()] = b.count;
     });
 
-    // Attach booking count to each user
+    // Attach booking counts
     const usersWithBookingCount = users.map((user) => ({
       ...user,
       bookingCount: bookingCountMap[user._id.toString()] || 0,
     }));
 
-    // Total user count for pagination metadata
-    const totalUsers = await User.countDocuments();
+    // Total user count for pagination metadata (matching filter)
+    const totalUsers = await User.countDocuments(filter);
 
     res.status(200).json({
       success: true,
       data: usersWithBookingCount,
-      pagination: {
-        total: totalUsers,
-        page,
-        limit,
-      },
+      pagination: { total: totalUsers, page, limit },
     });
   } catch (error) {
     console.error("Error fetching users", error);

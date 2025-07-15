@@ -3,6 +3,9 @@
 const Venue = require("../../model/venue");
 const fs = require("fs");
 const path = require("path");
+const ActivityLog = require("../../model/activityLog");
+const User = require("../../model/user");
+const Notification = require("../../model/notification");
 
 // Helper: Delete images from disk
 function deleteImages(images = []) {
@@ -16,7 +19,6 @@ function deleteImages(images = []) {
 
 // -------------------- CREATE VENUE --------------------
 exports.createVenue = async (req, res) => {
-
   try {
     const {
       venueName,
@@ -72,7 +74,6 @@ exports.createVenue = async (req, res) => {
       };
     }
 
-
     const venue = new Venue({
       venueName,
       capacity,
@@ -85,6 +86,44 @@ exports.createVenue = async (req, res) => {
     });
 
     await venue.save();
+    await ActivityLog.create({
+      message: `New venue created: ${venueName}`,
+      icon: "BuildingLibraryIcon",
+      color: "text-blue-600",
+      type: "venue",
+    });
+
+    const admins = await User.find({ role: "Admin" }).select("_id");
+
+    let createdNotifications = [];
+    try {
+      createdNotifications = await Promise.all(
+        admins.map(async (admin) =>
+          Notification.create({
+            recipient: admin._id,
+            type: "venue",
+            message: `New venue \"${venueName}\" added by  ${
+              req.user?.name || "Owner"
+            }`,
+            link: `/admin/venues/${venue._id}`,
+          })
+        )
+      );
+      console.log("Notifications created:", createdNotifications);
+    } catch (err) {
+      console.error("Error creating notification:", err);
+    }
+
+    const io = req.app.get("io");
+    admins.forEach((admin) => {
+      io.to(admin._id.toString()).emit(
+        "newNotification",
+        createdNotifications.find(
+          (n) => n.recipient.toString() === admin._id.toString()
+        )
+      );
+    });
+
     const savedVenue = await Venue.findById(venue._id);
 
     return res.status(201).json({
@@ -92,7 +131,6 @@ exports.createVenue = async (req, res) => {
       message: "Venue created. Upload images separately.",
       data: savedVenue,
     });
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({
@@ -103,16 +141,13 @@ exports.createVenue = async (req, res) => {
   }
 };
 
-
 // -------------------- UPLOAD VENUE IMAGES --------------------
 exports.uploadVenueImages = async (req, res) => {
   try {
     const { venueId } = req.params;
     const venue = await Venue.findById(venueId);
     if (!venue) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Venue not found" });
+      return res.status(404).json({ success: false, message: "Venue not found" });
     }
 
     const images = (req.files || []).map((file) => ({
@@ -144,9 +179,7 @@ exports.updateVenue = async (req, res) => {
     const venueId = req.params.id;
     const existingVenue = await Venue.findById(venueId);
     if (!existingVenue) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Venue not found" });
+      return res.status(404).json({ success: false, message: "Venue not found" });
     }
 
     const {
@@ -162,7 +195,6 @@ exports.updateVenue = async (req, res) => {
       location,
     } = req.body;
 
-    // Handle amenities
     let parsedAmenities = [];
     if (amenities) {
       if (typeof amenities === "string") {
@@ -177,7 +209,6 @@ exports.updateVenue = async (req, res) => {
       }
     }
 
-    // Handle location
     let parsedLocation = {};
     if (location && typeof location === "string") {
       try {
@@ -203,7 +234,6 @@ exports.updateVenue = async (req, res) => {
       location: parsedLocation,
     };
 
-    // Replace images if new ones uploaded
     if (req.files && req.files.length > 0) {
       deleteImages(existingVenue.venueImages);
 
@@ -239,9 +269,7 @@ exports.deleteVenue = async (req, res) => {
     const venueId = req.params.id;
     const venue = await Venue.findById(venueId);
     if (!venue) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Venue not found" });
+      return res.status(404).json({ success: false, message: "Venue not found" });
     }
 
     deleteImages(venue.venueImages);
@@ -272,9 +300,7 @@ exports.getVenuesByOwner = async (req, res) => {
   try {
     const ownerId = req.query.ownerId;
     if (!ownerId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Owner ID is required" });
+      return res.status(400).json({ success: false, message: "Owner ID is required" });
     }
 
     const venues = await Venue.find({ owner: ownerId });
@@ -288,6 +314,37 @@ exports.getVenuesByOwner = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: err.message,
+    });
+  }
+};
+
+// -------------------- GET APPROVED VENUE COUNT BY OWNER --------------------
+exports.getApprovedVenueCountByOwner = async (req, res) => {
+  try {
+    const ownerId = req.query.ownerId;
+
+    if (!ownerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Owner ID is required",
+      });
+    }
+
+    const count = await Venue.countDocuments({
+      owner: ownerId,
+      status: "approved",
+    });
+
+    return res.status(200).json({
+      success: true,
+      count,
+    });
+  } catch (err) {
+    console.error("Error fetching approved count by owner:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: err.message,
     });
   }
 };
