@@ -1,9 +1,39 @@
 const mongoose = require("mongoose");
 
+const reviewSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    rating: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 5,
+    },
+    title: {
+      type: String,
+      maxlength: 100,
+      default: "",
+    },
+    comment: {
+      type: String,
+      maxlength: 1000,
+      required: true,
+    },
+    helpfulCount: {
+      type: Number,
+      default: 0,
+    },
+  },
+  { timestamps: true }
+);
 const imageSchema = new mongoose.Schema(
   {
     filename: String,
-    url: String, // local path or cloud URL
+    url: String,
   },
   { _id: false }
 );
@@ -45,7 +75,7 @@ const VenueSchema = new mongoose.Schema(
     },
 
     amenities: {
-      type: [String], // e.g. ['WiFi', 'Parking', 'AC']
+      type: [String],
       default: [],
     },
 
@@ -63,6 +93,18 @@ const VenueSchema = new mongoose.Schema(
     isDeleted: {
       type: Boolean,
       default: false,
+    },
+
+    reviews: {
+      type: [reviewSchema],
+      default: [],
+    },
+
+    averageRating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: 0,
     },
   },
   { timestamps: true }
