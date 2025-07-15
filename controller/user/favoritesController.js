@@ -40,7 +40,7 @@ exports.getFavorites = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
+//returns the favorites array
 exports.getFavoriteVenues = async (req, res) => {
   try {
     const userId = req.user.id;
