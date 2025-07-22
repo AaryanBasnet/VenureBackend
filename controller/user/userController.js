@@ -1,6 +1,9 @@
 const User = require("../../model/user");
 const path = require("path");
 
+
+
+
 exports.updateUserProfile = async (req, res) => {
   const userId = req.user._id; // from authenticateUser middleware
   const { name, phone, address } = req.body;

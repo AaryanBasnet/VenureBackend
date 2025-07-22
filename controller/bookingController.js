@@ -1,3 +1,6 @@
+const Stripe = require("stripe");
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
 const Booking = require("../model/booking");
 const Venue = require("../model/venue");
 const mongoose = require("mongoose");
@@ -20,6 +23,8 @@ const getCustomerBookingCount = async (req, res) => {
   }
 };
 
+
+
 const createBooking = async (req, res) => {
   try {
     const {
@@ -35,24 +40,18 @@ const createBooking = async (req, res) => {
       phoneNumber,
       selectedAddons,
       totalPrice,
-      paymentDetails,
+      paymentIntentId, // <- This comes from frontend after Stripe success
     } = req.body;
 
-    const conflict = await Booking.findOne({
-      venue,
-      bookingDate: new Date(bookingDate),
-      timeSlot,
-      status: { $in: ["booked", "approved"] },
-    });
+    // Verify the payment with Stripe
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
-    if (conflict) {
+    if (paymentIntent.status !== "succeeded") {
       return res.status(400).json({
         success: false,
-        message: "This time slot is already booked for the selected venue.",
+        message: "Payment not completed.",
       });
     }
-
-    // Validation can be added here
 
     const booking = new Booking({
       customer,
@@ -67,7 +66,13 @@ const createBooking = async (req, res) => {
       phoneNumber,
       selectedAddons,
       totalPrice,
-      paymentDetails,
+      paymentDetails: {
+        paymentIntentId: paymentIntent.id,
+        amountReceived: paymentIntent.amount_received,
+        paymentMethod: paymentIntent.payment_method,
+        status: paymentIntent.status,
+      },
+      status: "booked",
     });
 
     const savedBooking = await booking.save();

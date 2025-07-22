@@ -17,7 +17,7 @@ const bookingSchema = new mongoose.Schema(
       required: true,
     },
     timeSlot: {
-      type: String, 
+      type: String,
       required: true,
     },
     hoursBooked: {
@@ -57,14 +57,15 @@ const bookingSchema = new mongoose.Schema(
       required: true,
     },
     paymentDetails: {
-      cardNumber: { type: String, required: true },
-      expiryDate: { type: String, required: true },
-      cvv: { type: String, required: true },
-      cardholderName: { type: String, required: true },
+      paymentIntentId: String,
+      amountReceived: Number,
+      paymentMethod: String,
+      status: String,
     },
+
     status: {
       type: String,
-      enum: ["booked", "cancelled", "completed","approved"],
+      enum: ["booked", "cancelled", "completed", "approved"],
       default: "booked",
     },
   },

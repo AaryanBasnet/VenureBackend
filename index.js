@@ -1,5 +1,7 @@
+// server.js
+
 const http = require("http");
-const app = require("./app");
+const app = require("./app");  // your express app exported from app.js
 const connectDB = require("./database/db");
 const setupSocket = require("./socket/socket");
 
@@ -7,7 +9,7 @@ const PORT = process.env.PORT || 5050;
 
 const server = http.createServer(app);
 
-// Setup Socket.IO
+// Setup Socket.IO on the HTTP server
 const io = setupSocket(server);
 app.set("io", io);
 
