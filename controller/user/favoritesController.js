@@ -7,8 +7,9 @@ exports.toggleFavorite = async (req, res) => {
 
   try {
     const user = await User.findById(userId);
-    const isFavorited = user.favorites.includes(venueId);
-
+const isFavorited = user.favorites.some(favId =>
+  favId.equals(venueId)
+);
     if (isFavorited) {
       user.favorites.pull(venueId); // remove
     } else {
