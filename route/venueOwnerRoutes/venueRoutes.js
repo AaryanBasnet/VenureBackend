@@ -28,6 +28,7 @@ router.post(
 router.post(
   "/:venueId/images",
   upload.venueImages(10), // multer middleware for multiple images
+  authenticateUser,
   isOwner,
   venueController.uploadVenueImages
 );

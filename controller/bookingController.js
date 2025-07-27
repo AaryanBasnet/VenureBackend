@@ -23,8 +23,6 @@ const getCustomerBookingCount = async (req, res) => {
   }
 };
 
-
-
 const createBooking = async (req, res) => {
   try {
     const {
@@ -40,8 +38,19 @@ const createBooking = async (req, res) => {
       phoneNumber,
       selectedAddons,
       totalPrice,
-      paymentIntentId, // <- This comes from frontend after Stripe success
     } = req.body;
+
+    // Extract paymentIntentId from root or nested paymentDetails
+    const paymentIntentId =
+      req.body.paymentIntentId ||
+      (req.body.paymentDetails && req.body.paymentDetails.paymentIntentId);
+
+    if (!paymentIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: "PaymentIntentId is required",
+      });
+    }
 
     // Verify the payment with Stripe
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);

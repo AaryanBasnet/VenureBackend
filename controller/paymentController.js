@@ -8,7 +8,6 @@ const convertNprToUsdCents = (nprAmount) => {
   // Convert NPR to USD, then to cents (Stripe expects smallest currency unit)
   return Math.round((nprAmount / exchangeRate) * 100);
 };
-
 exports.createPaymentIntent = async (req, res) => {
   try {
     const { amount, venueId, bookingDate, timeSlot } = req.body;
@@ -34,7 +33,10 @@ exports.createPaymentIntent = async (req, res) => {
       metadata: { venueId, bookingDate, timeSlot },
     });
 
-    res.json({ clientSecret: paymentIntent.client_secret });
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id, // ✅ return this to client
+    });
   } catch (err) {
     console.error("Payment Intent error", err);
     res.status(500).json({ error: err.message });

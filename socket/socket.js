@@ -1,6 +1,7 @@
 const Message = require("../model/message");
 const Chat = require("../model/chat");
 const Notification = require("../model/notification");
+const User = require("../model/user");
 
 function setupSocket(server) {
   const io = require("socket.io")(server, {
@@ -25,16 +26,31 @@ function setupSocket(server) {
 
     socket.on("sendMessage", async ({ chatId, sender, receiver, text }) => {
       if (!chatId || !sender || !receiver || !text) {
-        console.warn(
-          `Invalid sendMessage payload from socket ${socket.id}:`,
-          { chatId, sender, receiver, text }
-        );
+        console.warn(`Invalid sendMessage payload from socket ${socket.id}:`, {
+          chatId,
+          sender,
+          receiver,
+          text,
+        });
         return;
       }
 
-      console.log(`sendMessage from ${sender} to ${receiver}: ${text}`);
+      console.log(
+        `sendMessage from userId ${sender} to userId ${receiver}: ${text}`
+      ); // Keep this for clarity, showing IDs
 
       try {
+        // --- FETCH SENDER'S USERNAME ---
+        const senderUser = await User.findById(sender).select("name"); // Fetch only the username field
+        if (!senderUser) {
+          console.error(`Sender user with ID ${sender} not found.`);
+          // Optionally, emit an error back to the sender
+          socket.emit("sendMessageError", { error: "Sender user not found." });
+          return;
+        }
+        const senderUsername = senderUser.name;
+        // ---------------------------------
+
         const message = new Message({ chatId, sender, receiver, text });
         await message.save();
 
@@ -46,8 +62,9 @@ function setupSocket(server) {
         const messagePayload = {
           _id: message._id.toString(),
           chatId,
-          sender,
-          receiver,
+          senderId: sender, // Include original sender ID
+          senderUsername: senderUsername, // <--- ADD SENDER USERNAME HERE
+          receiverId: receiver, // Include original receiver ID
           text,
           timestamp: message.createdAt
             ? message.createdAt.toISOString()
@@ -55,13 +72,19 @@ function setupSocket(server) {
           seen: message.seen || false,
         };
 
-        console.log(`Emitting receiveMessage to room: ${receiver}`);
+        // --- UPDATE CONSOLE LOG WITH USERNAME ---
+        console.log(
+          `Emitting receiveMessage to room: ${receiver} from ${senderUsername}`
+        );
+        // ----------------------------------------
         io.to(receiver).emit("receiveMessage", messagePayload);
 
         const notification = await Notification.create({
           recipient: receiver,
           type: "chat",
-          message: `New message from ${sender}`,
+          // --- USE SENDER USERNAME IN NOTIFICATION MESSAGE ---
+          message: `New message from ${senderUsername}`,
+          // ---------------------------------------------------
           link: `/chat/${chatId}`,
         });
 
@@ -69,6 +92,11 @@ function setupSocket(server) {
         io.to(receiver).emit("newNotification", notification);
       } catch (error) {
         console.error("Error handling sendMessage:", error);
+        // Optionally, emit an error back to the sender
+        socket.emit("sendMessageError", {
+          chatId,
+          error: "Failed to send message. Please try again.",
+        });
       }
     });
 
