@@ -35,9 +35,8 @@ exports.isAdmin = async (req, res, next) => {
       .json({ success: false, message: "Admin privilage required" });
   }
 };
+
 exports.isOwner = async (req, res, next) => {
-
-
   if (req.user && req.user.role === "VenueOwner") {
     next();
   } else {
@@ -63,12 +62,10 @@ exports.authorizeBookingOwner = async (req, res, next) => {
         .json({ success: false, message: "Venue not found" });
 
     if (venue.owner.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "You do not have permission to modify this booking.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "You do not have permission to modify this booking.",
+      });
     }
 
     next();

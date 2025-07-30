@@ -18,9 +18,16 @@ const notificationRoutes = require("./route/notification");
 const reviewRoutes = require("./route/reviewRoutes");
 const testimonialRoutes = require("./route/testimonialRoutes");
 const contactRoutes = require("./route/contactRoutes");
-const paymentRoutes = require('./route/paymentRoutes');
+const paymentRoutes = require("./route/paymentRoutes");
 
 const app = express();
+
+// after you create your app
+
+if (process.env.NODE_ENV === "test") {
+  const testRoutes = require("./route/testRoutes");
+  app.use("/test", testRoutes);
+}
 
 const corsOptions = {
   origin: true,
@@ -36,7 +43,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/auth", authRoutes);
 app.use("/api/venueOwner/venues", venueRoutes);
 app.use("/api/admin/user", adminUserRoutes);
-app.use('/api/payment', paymentRoutes);
+app.use("/api/payment", paymentRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/admin/venues", adminVenueRoutes);
 app.use("/api/chats", chatRoutes);

@@ -147,7 +147,9 @@ exports.uploadVenueImages = async (req, res) => {
     const { venueId } = req.params;
     const venue = await Venue.findById(venueId);
     if (!venue) {
-      return res.status(404).json({ success: false, message: "Venue not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Venue not found" });
     }
 
     const images = (req.files || []).map((file) => ({
@@ -176,10 +178,15 @@ exports.uploadVenueImages = async (req, res) => {
 // -------------------- UPDATE VENUE --------------------
 exports.updateVenue = async (req, res) => {
   try {
+    console.log("req.body:", req.body);
+    console.log("req.files:", req.files);
+
     const venueId = req.params.id;
     const existingVenue = await Venue.findById(venueId);
     if (!existingVenue) {
-      return res.status(404).json({ success: false, message: "Venue not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Venue not found" });
     }
 
     const {
@@ -188,24 +195,16 @@ exports.updateVenue = async (req, res) => {
       description,
       pricePerHour,
       amenities,
-      address,
-      city,
-      state,
-      country,
       location,
     } = req.body;
 
     let parsedAmenities = [];
     if (amenities) {
-      if (typeof amenities === "string") {
-        try {
-          parsedAmenities = JSON.parse(amenities);
-          if (!Array.isArray(parsedAmenities)) parsedAmenities = [];
-        } catch {
-          parsedAmenities = [];
-        }
-      } else if (Array.isArray(amenities)) {
-        parsedAmenities = amenities;
+      try {
+        parsedAmenities = JSON.parse(amenities);
+        if (!Array.isArray(parsedAmenities)) parsedAmenities = [];
+      } catch {
+        parsedAmenities = [];
       }
     }
 
@@ -216,13 +215,6 @@ exports.updateVenue = async (req, res) => {
       } catch {
         parsedLocation = {};
       }
-    } else {
-      parsedLocation = {
-        address: address || "",
-        city: city || "",
-        state: state || "",
-        country: country || "",
-      };
     }
 
     const updateData = {
@@ -269,7 +261,9 @@ exports.deleteVenue = async (req, res) => {
     const venueId = req.params.id;
     const venue = await Venue.findById(venueId);
     if (!venue) {
-      return res.status(404).json({ success: false, message: "Venue not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Venue not found" });
     }
 
     deleteImages(venue.venueImages);
@@ -300,7 +294,9 @@ exports.getVenuesByOwner = async (req, res) => {
   try {
     const ownerId = req.query.ownerId;
     if (!ownerId) {
-      return res.status(400).json({ success: false, message: "Owner ID is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Owner ID is required" });
     }
 
     const venues = await Venue.find({ owner: ownerId });

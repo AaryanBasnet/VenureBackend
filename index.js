@@ -1,27 +1,28 @@
-// server.js
+// // server.js
 
-const http = require("http");
-const app = require("./app");  // your express app exported from app.js
-const connectDB = require("./database/db");
-const setupSocket = require("./socket/socket");
+// const http = require("http");
+// const app = require("./app");  // your express app exported from app.js
+// const connectDB = require("./database/db");
+// const setupSocket = require("./socket/socket");
 
-const PORT = process.env.PORT || 5050;
+// const PORT = process.env.PORT || 5050;
 
-const server = http.createServer(app);
+// const server = http.createServer(app);
 
-// Setup Socket.IO on the HTTP server
-const io = setupSocket(server);
-app.set("io", io);
+// // Setup Socket.IO on the HTTP server
+// const io = setupSocket(server);
+// app.set("io", io);
 
-const startServer = async () => {
-  try {
-    await connectDB();
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  } catch (err) {
-    console.error("Server startup error:", err);
-  }
-};
+// const startServer = async () => {
+//   try {
+//     await connectDB();
+//     server.listen(PORT, () => {
+//       console.log(`Server running on port ${PORT}`);
+//     });
+//   } catch (err) {
+//     console.error("Server startup error:", err);
+//   }
+// };
 
-startServer();
+// startServer();
+require("./server");
