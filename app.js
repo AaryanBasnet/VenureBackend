@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const multer = require("multer");
 
 const authRoutes = require("./route/authRoutes");
 const venueRoutes = require("./route/venueOwnerRoutes/venueRoutes");
@@ -56,5 +57,16 @@ app.use("/api/notification", notificationRoutes);
 app.use("/api", reviewRoutes);
 app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/contact", contactRoutes);
+
+// Multer error handling
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ success: false, message: err.message });
+  } else if (err.message && err.message.includes("Only image files are allowed")) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+  next(err); // Pass to default error handler
+});
+
 
 module.exports = app;

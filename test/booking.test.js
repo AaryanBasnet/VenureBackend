@@ -7,9 +7,24 @@ const Venue = require("../model/venue");
 const User = require("../model/user");
 const jwt = require("jsonwebtoken");
 
+process.env.JWT_SECRET = "testsecret"; // ✅ Ensure JWT works
+
 let mongod;
 let customerToken, ownerToken, adminToken;
 let customerId, ownerId, venueId, bookingId;
+
+jest.mock("stripe", () => {
+  return jest.fn(() => ({
+    paymentIntents: {
+      retrieve: jest.fn().mockResolvedValue({
+        id: "pi_test_123",
+        amount_received: 300,
+        payment_method: "card",
+        status: "succeeded",
+      }),
+    },
+  }));
+});
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
@@ -74,12 +89,11 @@ beforeAll(async () => {
     selectedAddons: [],
     totalPrice: 200,
     paymentDetails: {
-      cardNumber: "4111111111111111",
-      expiryDate: "12/25",
-      cvv: "123",
-      cardholderName: "Contact Person",
+      paymentIntentId: "pi_test_123",
+      amountReceived: 300,
+      paymentMethod: "card",
+      status: "succeeded",
     },
-    status: "booked",
   });
 
   bookingId = booking._id;
@@ -92,7 +106,37 @@ afterAll(async () => {
 });
 
 describe("Booking API Tests", () => {
-  
+  test("Customer can create a booking", async () => {
+    const res = await request(app)
+      .post("/api/bookings/createBooking")
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({
+        customer: customerId,
+        venue: venueId,
+        bookingDate: new Date().toISOString(), // ✅ safer
+        timeSlot: "14:00-16:00",
+        hoursBooked: 2,
+        numberOfGuests: 20,
+        eventType: "Party",
+        contactName: "John Doe",
+        phoneNumber: "9876543210",
+        selectedAddons: [],
+        totalPrice: 300,
+        paymentDetails: { // ✅ matches schema
+          paymentIntentId: "pi_test_456",
+          amountReceived: 300,
+          paymentMethod: "card",
+          status: "succeeded",
+        },
+      });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body).toHaveProperty("booking");
+    expect(res.body.booking.customer).toBe(String(customerId));
+  });
+});
+
+describe("Booking API Tests", () => {
   test("Customer can create a booking", async () => {
     const res = await request(app)
       .post("/api/bookings/createBooking")
@@ -110,10 +154,10 @@ describe("Booking API Tests", () => {
         selectedAddons: [],
         totalPrice: 300,
         paymentDetails: {
-          cardNumber: "4111111111111111",
-          expiryDate: "11/25",
-          cvv: "321",
-          cardholderName: "John Doe",
+          paymentIntentId: "pi_test_123",
+          amountReceived: 300,
+          paymentMethod: "card",
+          status: "succeeded",
         },
       });
 
@@ -230,4 +274,3 @@ describe("Booking API Tests", () => {
     expect(Array.isArray(res.body.data)).toBe(true);
   });
 });
-

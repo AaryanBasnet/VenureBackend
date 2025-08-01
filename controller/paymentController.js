@@ -1,15 +1,16 @@
 const Booking = require("../model/booking");
 
-const Stripe = require("stripe");
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-
 const convertNprToUsdCents = (nprAmount) => {
   const exchangeRate = 132;
-  // Convert NPR to USD, then to cents (Stripe expects smallest currency unit)
   return Math.round((nprAmount / exchangeRate) * 100);
 };
+
 exports.createPaymentIntent = async (req, res) => {
   try {
+    // Lazy-load Stripe instance here instead of top-level require
+    const Stripe = require("stripe");
+    const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
     const { amount, venueId, bookingDate, timeSlot } = req.body;
 
     const conflict = await Booking.findOne({
@@ -35,7 +36,7 @@ exports.createPaymentIntent = async (req, res) => {
 
     res.json({
       clientSecret: paymentIntent.client_secret,
-      paymentIntentId: paymentIntent.id, // ✅ return this to client
+      paymentIntentId: paymentIntent.id,
     });
   } catch (err) {
     console.error("Payment Intent error", err);
