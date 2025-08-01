@@ -11,9 +11,12 @@ const {
 
 router.get(
   "/approvedCountByOwner",
+  authenticateUser,
 
   venueController.getApprovedVenueCountByOwner
 );
+
+router.get("/", authenticateUser, isOwner, venueController.getVenuesByOwner);
 
 // 1. Create venue (without images)
 router.post(
@@ -28,6 +31,7 @@ router.post(
 router.post(
   "/:venueId/images",
   upload.venueImages(10), // multer middleware for multiple images
+  authenticateUser,
   isOwner,
   venueController.uploadVenueImages
 );
@@ -36,6 +40,7 @@ router.post(
 router.put(
   "/:id",
   upload.venueImages(10), // allow new images upload for replacement
+  authenticateUser,
   isOwner,
 
   venueController.updateVenue
@@ -45,6 +50,5 @@ router.put(
 router.delete("/:id", authenticateUser, isOwner, venueController.deleteVenue);
 
 // 5. Get venues by owner
-router.get("/", authenticateUser, isOwner, venueController.getVenuesByOwner);
 
 module.exports = router;

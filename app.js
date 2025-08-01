@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const multer = require("multer");
 
 const authRoutes = require("./route/authRoutes");
 const venueRoutes = require("./route/venueOwnerRoutes/venueRoutes");
@@ -18,8 +19,16 @@ const notificationRoutes = require("./route/notification");
 const reviewRoutes = require("./route/reviewRoutes");
 const testimonialRoutes = require("./route/testimonialRoutes");
 const contactRoutes = require("./route/contactRoutes");
+const paymentRoutes = require("./route/paymentRoutes");
 
 const app = express();
+
+// after you create your app
+
+if (process.env.NODE_ENV === "test") {
+  const testRoutes = require("./route/testRoutes");
+  app.use("/test", testRoutes);
+}
 
 const corsOptions = {
   origin: true,
@@ -35,6 +44,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/auth", authRoutes);
 app.use("/api/venueOwner/venues", venueRoutes);
 app.use("/api/admin/user", adminUserRoutes);
+app.use("/api/payment", paymentRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/admin/venues", adminVenueRoutes);
 app.use("/api/chats", chatRoutes);
@@ -47,5 +57,16 @@ app.use("/api/notification", notificationRoutes);
 app.use("/api", reviewRoutes);
 app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/contact", contactRoutes);
+
+// Multer error handling
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ success: false, message: err.message });
+  } else if (err.message && err.message.includes("Only image files are allowed")) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+  next(err); // Pass to default error handler
+});
+
 
 module.exports = app;
