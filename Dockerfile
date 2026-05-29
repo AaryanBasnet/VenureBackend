@@ -1,25 +1,22 @@
-#Select OS/ENVIRONMENT
-
 FROM node:22-alpine
 
-#Choose working directory inside docker
-WORKDIR / app
+# Set working directory
+WORKDIR /app
 
-#zcopy package.josn to install npm packages inside docker
-#Copy source destination'
-COPY package.json ./
+# Install dependencies (use cached layer)
+COPY package*.json ./
+RUN npm install --production
 
-#Running Shelll command
-RUN npm install
-
-#Copy rest of the Application
+# Copy application code
 COPY . .
 
-#Port Exposure
-EXPOSE 5050
+# Set production environment
+ENV NODE_ENV=production
 
-#Entry Point
+# Expose application port
+EXPOSE 5051
 
-CMD ["node", "index.js"]
+# Start the server
+CMD ["node", "server.js"]
 
 
