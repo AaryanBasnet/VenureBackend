@@ -1,5 +1,5 @@
 const User = require("../model/user");
-const RefreshToken = require("../model/RefreshToken"); // ✨ The new dedicated model
+const RefreshToken = require("../model/refreshToken");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
