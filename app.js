@@ -60,9 +60,22 @@ app.use(
   })
 );
 
+const allowedOrigins = [
+  (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, ""),
+  "http://localhost:5173",
+  "http://localhost:5174",
+];
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: (origin, callback) => {
+      // Allow server-to-server requests (no origin) and listed origins
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: origin ${origin} not allowed`));
+      }
+    },
     credentials: true,
   })
 );
