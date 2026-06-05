@@ -1,16 +1,19 @@
-require("dotenv").config();
+// require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
+const cookieParser = require("cookie-parser");
+
 
 const morgan = require("morgan");
 const compression = require("compression");
 const rateLimit = require("express-rate-limit")
 
 const authRoutes = require("./route/authRoutes");
+const passwordRoutes = require("./route/passwordRoutes")
 const venueRoutes = require("./route/venueOwnerRoutes/venueRoutes");
 const adminUserRoutes = require("./route/admin/adminUserRoute");
 const bookingRoutes = require("./route/bookingRoutes");
@@ -87,6 +90,8 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
+app.use(cookieParser());
+
 
 /* ========================
    TEST ROUTES
@@ -101,6 +106,7 @@ if (process.env.NODE_ENV === "test") {
    API ROUTES
 ======================== */
 app.use("/api/auth", authRoutes);
+app.use("/api/password", passwordRoutes)
 app.use("/api/venueOwner/venues", venueRoutes);
 app.use("/api/admin/user", adminUserRoutes);
 app.use("/api/payment", paymentRoutes);

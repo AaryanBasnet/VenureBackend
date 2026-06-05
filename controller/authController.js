@@ -1,321 +1,119 @@
-const User = require("../model/user");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const ActivityLog = require("../model/activityLog");
-const sendEmail = require("../utils/sendEmail");
-const crypto = require("crypto");
-const Notification = require("../model/notification"); 
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
+const authService = require("../services/authService");
 
-const registerUser = async (req, res) => {
-  try {
-    const { name, email, phone, role, password } = req.body;
+/* =========================================================================
+   UTILITY: Cookie Configuration
+   Enterprise standard: 7 days, HttpOnly (prevents XSS), 
+   Secure (requires HTTPS in production), SameSite (prevents CSRF)
+========================================================================= */
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production", 
+  sameSite: "strict",
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+});
 
-    if (!name || !email || !password || !phone) {
-      return res
-        .status(400)
-        .json({ success: false, message: "All fields are required" });
-    }
-
-    const existingUser = await User.findOne({ email });
-
-    if (existingUser) {
-      return res
-        .status(400)
-        .json({ success: false, message: "User Already exists" });
-    }
-
-    const hasedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      name,
-      email,
-      password: hasedPassword,
-      role,
-      phone,
-    });
-
-    await newUser.save();
-
-    // ✅ Add activity log
-    await ActivityLog.create({
-      message: `New user registration: ${newUser.name}`,
-      icon: "UserPlusIcon",
-      color: "text-green-600",
-      type: "registration",
-    });
-
-    res.status(201).json({
-      success: true,
-      message: "User registered succesfully",
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-      },
-    });
-  } catch (err) {
-    console.error("Registration error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
+/* =========================================================================
+   UTILITY: Fingerprint Extractor
+========================================================================= */
+const getFingerprint = (req) => {
+  return {
+    userAgent: req.headers["user-agent"] || "Unknown Device",
+    ip: req.ip || req.connection.remoteAddress || "Unknown IP",
+  };
 };
 
-const loginUser = async (req, res) => {
-  const { email, password } = req.body;
+/* ================= REGISTER ================= */
 
-  if (!email || !password) {
-    return res.status(400).json({
-      success: false,
-      message: "Please enter all the fields",
-    });
-  }
-  try {
-    const user = await User.findOne({ email });
+const registerUser = asyncHandler(async (req, res) => {
+  // Registration usually just creates the account. 
+  // We force them to log in afterward to establish the secure session.
+  await authService.register(req.body);
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User Doesnt exist",
-      });
-    }
+  res.status(201).json({
+    success: true,
+    message: "User registered successfully. Please log in.",
+  });
+});
 
-    const isPasswordMatching = await bcrypt.compare(password, user.password);
-    if (!isPasswordMatching) {
-      return res.status(404).json({
-        success: false,
-        message: "Invalid Credential",
-      });
-    }
+/* ================= LOGIN ================= */
 
-    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1d",
-    });
-    res.status(200).json({
-      success: true,
-      message: "User logged in successfully.",
-      token,
-      userData: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
-};
+const loginUser = asyncHandler(async (req, res) => {
+  const { userAgent, ip } = getFingerprint(req);
 
-const verifyPassword = async (req, res) => {
-  const { userId, password } = req.body;
+  // 1. Pass credentials AND fingerprint down to the service
+  const result = await authService.login(
+    req.body.email,
+    req.body.password,
+    userAgent,
+    ip
+  );
 
-  if (!userId || !password) {
-    return res.status(400).json({
-      success: false,
-      message: "User ID and password are required",
-    });
+  // 2. Lock the Refresh Token in an impenetrable cookie
+  res.cookie("refreshToken", result.refreshToken, getCookieOptions());
+
+  // 3. Send ONLY the short-lived Access Token in the JSON body
+  res.status(200).json({
+    success: true,
+    accessToken: result.accessToken,
+    user: result.user,
+  });
+});
+
+/* ================= REFRESH (TOKEN ROTATION) ================= */
+
+const refreshToken = asyncHandler(async (req, res) => {
+  const oldRefreshToken = req.cookies.refreshToken;
+  const { userAgent, ip } = getFingerprint(req);
+
+  if (!oldRefreshToken) {
+    throw new AppError("Authentication required. Please log in.", 401);
   }
 
-  try {
-    const user = await User.findById(userId);
+  // 1. Execute the rotation and get the brand-new pair
+  const { newAccessToken, newRefreshToken } = await authService.refreshAccessToken(
+    oldRefreshToken,
+    userAgent,
+    ip
+  );
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
+  // 2. Overwrite the old cookie with the brand-new Refresh Token
+  res.cookie("refreshToken", newRefreshToken, getCookieOptions());
 
-    const isMatch = await bcrypt.compare(password, user.password);
+  // 3. Send the fresh Access Token to the client
+  res.status(200).json({
+    success: true,
+    accessToken: newAccessToken,
+  });
+});
 
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Incorrect password",
-      });
-    }
+/* ================= LOGOUT ================= */
 
-    res.status(200).json({ success: true, message: "Password verified" });
-  } catch (err) {
-    console.error("Password verification error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+const logoutUser = asyncHandler(async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+
+  // 1. Tell the DB to destroy this specific session token
+  if (refreshToken) {
+    await authService.logout(refreshToken);
   }
-};
 
-const forgotPassword = async (req, res) => {
-  const { email } = req.body;
+  // 2. Instruct the browser to instantly delete the cookie
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
 
-  try {
-    const user = await User.findOne({ email });
-    console.log(
-      "[ForgotPassword] User lookup:",
-      user ? user.email : "Not found"
-    );
-
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-    }
-
-    const resetCode = user.getResetPasswordCode();
-    await user.save({ validateBeforeSave: false });
-
-    console.log("[ForgotPassword] Generated reset code (plain):", resetCode);
-    console.log(
-      "[ForgotPassword] Stored resetPasswordToken (hashed):",
-      user.resetPasswordToken
-    );
-    console.log(
-      "[ForgotPassword] Code expiry timestamp:",
-      user.resetPasswordExpire
-    );
-    console.log("[ForgotPassword] Current time:", Date.now());
-
-    const message = `
-      <h2>Venure Password Reset Code</h2>
-      <p>Your password reset code is: <strong>${resetCode}</strong></p>
-      <p>This code will expire in 15 minutes.</p>
-    `;
-
-    await sendEmail({
-      to: user.email,
-      subject: "Venure Password Reset Code",
-      html: message,
-    });
-
-    res
-      .status(200)
-      .json({ success: true, message: "Reset code sent to your email" });
-  } catch (err) {
-    console.error("[ForgotPassword] Error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// POST /auth/verify-reset-code
-const verifyResetCode = async (req, res) => {
-  const { email, code } = req.body;
-  const hashedCode = crypto.createHash("sha256").update(code).digest("hex");
-
-  console.log("[VerifyResetCode] Email:", email);
-  console.log("[VerifyResetCode] Plain code from user:", code);
-  console.log("[VerifyResetCode] Hashed code:", hashedCode);
-  console.log("[VerifyResetCode] Current time:", Date.now());
-
-  try {
-    const user = await User.findOne({
-      email,
-      resetPasswordToken: hashedCode,
-      resetPasswordExpire: { $gt: Date.now() },
-    });
-
-    console.log("[VerifyResetCode] User found:", !!user);
-    if (user) {
-      console.log(
-        "[VerifyResetCode] Stored resetPasswordCodeExpire:",
-        user.resetPasswordExpire
-      );
-      console.log(
-        "[VerifyResetCode] Time difference (expire - now):",
-        user.resetPasswordExpire - Date.now()
-      );
-    }
-
-    if (!user) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid or expired code" });
-    }
-
-    res.status(200).json({ success: true, message: "Code verified" });
-  } catch (err) {
-    console.error("[VerifyResetCode] Error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// POST /auth/reset-password
-const resetPasswordWithCode = async (req, res) => {
-  const { email, code, password } = req.body;
-  const hashedCode = crypto.createHash("sha256").update(code).digest("hex");
-
-  console.log("[ResetPassword] Email:", email);
-  console.log("[ResetPassword] Plain code:", code);
-  console.log("[ResetPassword] Hashed code:", hashedCode);
-  console.log("[ResetPassword] Current time:", Date.now());
-
-  try {
-    const user = await User.findOne({
-      email,
-      resetPasswordToken: hashedCode,
-      resetPasswordExpire: { $gt: Date.now() },
-    });
-
-    console.log("[ResetPassword] User found:", !!user);
-    if (user) {
-      console.log(
-        "[ResetPassword] Stored resetPasswordCodeExpire:",
-        user.resetPasswordExpire
-      );
-      console.log(
-        "[ResetPassword] Time difference (expire - now):",
-        user.resetPasswordExpire - Date.now()
-      );
-    }
-
-    if (!user) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid or expired code" });
-    }
-
-    user.password = await bcrypt.hash(password, 10);
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-
-    await user.save();
-
-    // 🔔 Create notification after successful reset
-    const notification = await Notification.create({
-      recipient: user._id,
-      type: "security",
-      message: "Your password has been reset successfully.",
-      link: "/profile/security", // adjust link as needed
-    });
-
-    // 🔔 Emit via socket.io if enabled
-    const io = req.app.get("io");
-    if (io) {
-      io.to(user._id.toString()).emit("newNotification", notification);
-    }
-
-    console.log(
-      "[ResetPassword] Password reset successful for user:",
-      user.email
-    );
-
-    res
-      .status(200)
-      .json({ success: true, message: "Password reset successful" });
-  } catch (err) {
-    console.error("[ResetPassword] Error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
+  res.status(200).json({
+    success: true,
+    message: "Logged out successfully",
+  });
+});
 
 module.exports = {
   registerUser,
   loginUser,
-  verifyPassword,
-  forgotPassword,
-  resetPasswordWithCode,
-  verifyResetCode,
+  refreshToken,
+  logoutUser,
 };

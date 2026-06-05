@@ -23,11 +23,11 @@ const options = {
 ======================== */
 const connectDB = async () => {
   try {
-    console.log(" Connecting to MongoDB...");
+    logger.info(" Connecting to MongoDB...");
 
     await mongoose.connect(CONNECTION_STRING, options);
 
-    console.log("MongoDB Connected Successfully");
+    logger.info("MongoDB Connected Successfully");
   } catch (err) {
     console.error("MongoDB Connection failed: ", err);
     process.exit(1);
@@ -43,7 +43,7 @@ mongoose.connection.on("disconnected", () => {
 });
 
 mongoose.connection.on("reconnected", () => {
-  console.log("🔄 MongoDB reconnected");
+  logger.info("🔄 MongoDB reconnected");
 });
 
 mongoose.connection.on("error", (err) => {

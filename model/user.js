@@ -5,17 +5,19 @@ const userSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    trim: true, // removes white space
+    trim: true,
   },
   email: {
     type: String,
     required: true,
     unique: true,
     lowercase: true,
+    trim: true,
   },
   password: {
     type: String,
     required: true,
+    select: false, // ENTERPRISE LAYER: Never return the password hash by default in queries
   },
   role: {
     type: String,
@@ -31,10 +33,9 @@ const userSchema = new mongoose.Schema({
     trim: true,
   },
   avatar: {
-    type: String, // image URL or relative path like /uploads/users/filename.jpg
-    default: "", // or a placeholder image URL
+    type: String,
+    default: "",
   },
-
   favorites: [
     {
       type: mongoose.Schema.Types.ObjectId,
@@ -45,19 +46,24 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-
   resetPasswordToken: String,
   resetPasswordExpire: Date,
 });
 
+/* =========================================================================
+   SECURITY LAYER: Fixes raw token leak risk in the reset code helper
+========================================================================= */
 userSchema.methods.getResetPasswordCode = function () {
   const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+  
   this.resetPasswordToken = crypto
     .createHash("sha256")
     .update(code)
-    .digest("hex"); // hash
+    .digest("hex");
+    
   this.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 minutes expiry
-  return code; // return plain code to send via email
+  
+  return code; 
 };
 
 const User = mongoose.model("User", userSchema);
