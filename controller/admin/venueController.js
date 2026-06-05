@@ -66,7 +66,7 @@ exports.updateVenueStatus = async (req, res) => {
   const status = req.body.status;
 
   if (!["approved", "rejected", "pending"].includes(status)) {
-    console.log("Invalid status received!");
+    logger.info("Invalid status received!");
     return res.status(400).json({ success: false, message: "Invalid status" });
   }
 

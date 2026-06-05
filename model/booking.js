@@ -12,16 +12,13 @@ const bookingSchema = new mongoose.Schema(
       ref: "Venue",
       required: true,
     },
-    bookingDate: {
+    //  Strict Datetime tracking prevents race conditions
+    startTime: {
       type: Date,
       required: true,
     },
-    timeSlot: {
-      type: String,
-      required: true,
-    },
-    hoursBooked: {
-      type: Number,
+    endTime: {
+      type: Date,
       required: true,
     },
     numberOfGuests: {
@@ -62,14 +59,20 @@ const bookingSchema = new mongoose.Schema(
       paymentMethod: String,
       status: String,
     },
-
     status: {
       type: String,
-      enum: ["booked", "cancelled", "completed", "approved"],
-      default: "booked",
+      enum: ["pending_payment", "booked", "cancelled", "completed"],
+      default: "pending_payment", // Added pending to handle Stripe flow safely
     },
   },
   { timestamps: true }
 );
+
+/* =========================================================================
+   ENTERPRISE LAYER: Collision Index
+   Speeds up the query when checking if a venue is already booked
+========================================================================= */
+bookingSchema.index({ venue: 1, startTime: 1, endTime: 1 });
+bookingSchema.index({ customer: 1 }); // Fast lookup for user dashboards
 
 module.exports = mongoose.model("Booking", bookingSchema);

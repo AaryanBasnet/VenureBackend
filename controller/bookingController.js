@@ -1,379 +1,124 @@
-const Stripe = require("stripe");
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const asyncHandler = require("../utils/asyncHandler");
+const bookingService = require("../services/bookingService");
 
-const Booking = require("../model/booking");
-const Venue = require("../model/venue");
-const mongoose = require("mongoose");
-const { getAllApprovedVenues } = require("./user/userVenueController");
+/* ========================
+   CREATE BOOKING
+======================== */
+const createBooking = asyncHandler(async (req, res) => {
+  // req.body is already perfectly formatted and validated by Zod at this point
+  const newBooking = await bookingService.createBooking(req.body, req.user._id);
 
-const getCustomerBookingCount = async (req, res) => {
-  try {
-    const customerId = req.user._id;
+  res.status(201).json({
+    success: true,
+    message: "Booking created successfully",
+    data: newBooking,
+  });
+});
 
-    const bookingCount = await Booking.countDocuments({ customer: customerId });
+/* ========================
+   CUSTOMER ENDPOINTS
+======================== */
+const getBookingsForCustomer = asyncHandler(async (req, res) => {
+  const bookings = await bookingService.getCustomerBookings(req.user._id);
 
-    res.status(200).json({
-      success: true,
-      message: "Total bookings fetched successfully",
-      data: bookingCount,
-    });
-  } catch (err) {
-    console.error("Error fetching booking count", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
+  res.status(200).json({
+    success: true,
+    data: bookings,
+  });
+});
 
-const createBooking = async (req, res) => {
-  try {
-    const {
-      customer,
-      venue,
-      bookingDate,
-      timeSlot,
-      hoursBooked,
-      numberOfGuests,
-      eventType,
-      specialRequirements,
-      contactName,
-      phoneNumber,
-      selectedAddons,
-      totalPrice,
-    } = req.body;
+const getCustomerBookingCount = asyncHandler(async (req, res) => {
+  const count = await bookingService.getCustomerBookingCount(req.user._id);
 
-    // Extract paymentIntentId from root or nested paymentDetails
-    const paymentIntentId =
-      req.body.paymentIntentId ||
-      (req.body.paymentDetails && req.body.paymentDetails.paymentIntentId);
+  res.status(200).json({
+    success: true,
+    data: count,
+  });
+});
 
-    if (!paymentIntentId) {
-      return res.status(400).json({
-        success: false,
-        message: "PaymentIntentId is required",
-      });
-    }
+/* ========================
+   VENUE OWNER ENDPOINTS
+======================== */
+const getBookingsForOwner = asyncHandler(async (req, res) => {
+  const bookings = await bookingService.getBookingsForOwner(req.user._id);
 
-    // Verify the payment with Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  res.status(200).json({
+    success: true,
+    data: bookings,
+  });
+});
 
-    if (paymentIntent.status !== "succeeded") {
-      return res.status(400).json({
-        success: false,
-        message: "Payment not completed.",
-      });
-    }
+const getMonthlyEarningsForOwner = asyncHandler(async (req, res) => {
+  const earnings = await bookingService.getMonthlyEarningsForOwner(req.user._id);
 
-    const booking = new Booking({
-      customer,
-      venue,
-      bookingDate,
-      timeSlot,
-      hoursBooked,
-      numberOfGuests,
-      eventType,
-      specialRequirements,
-      contactName,
-      phoneNumber,
-      selectedAddons,
-      totalPrice,
-      paymentDetails: {
-        paymentIntentId: paymentIntent.id,
-        amountReceived: paymentIntent.amount_received,
-        paymentMethod: paymentIntent.payment_method,
-        status: paymentIntent.status,
-      },
-      status: "booked",
-    });
+  res.status(200).json({
+    success: true,
+    data: earnings,
+  });
+});
 
-    const savedBooking = await booking.save();
-    res.status(201).json({ message: "Booking created", booking: savedBooking });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Booking creation failed", error: error.message });
-  }
-};
+const getTotalBookingsForOwner = asyncHandler(async (req, res) => {
+  const count = await bookingService.getTotalBookingsForOwner(req.user._id);
 
-const getBookingsForOwner = async (req, res) => {
-  try {
-    const ownerId = req.user._id; // from auth middleware
+  res.status(200).json({
+    success: true,
+    data: count,
+  });
+});
 
-    // Step 1: Find venues owned by this owner
-    const ownerVenues = await Venue.find({ owner: ownerId }).select("_id");
-    const venueIds = ownerVenues.map((v) => v._id);
+/* ========================
+   STATUS MODIFICATIONS
+======================== */
+const approveBooking = asyncHandler(async (req, res) => {
+  const booking = await bookingService.modifyBookingStatus(req.params.id, "approved");
 
-    // Step 2: Find bookings for these venues
-    const bookings = await Booking.find({ venue: { $in: venueIds } })
-      .populate("venue")
-      .populate("customer");
+  res.status(200).json({
+    success: true,
+    message: "Booking approved successfully",
+    data: booking,
+  });
+});
 
-    return res.status(200).json({
-      success: true,
-      data: bookings,
-    });
-  } catch (err) {
-    console.error("Error fetching owner's bookings", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch bookings for owner",
-    });
-  }
-};
+const cancelBooking = asyncHandler(async (req, res) => {
+  const booking = await bookingService.modifyBookingStatus(req.params.id, "cancelled");
 
-// Cancel booking by ID
-const cancelBooking = async (req, res) => {
-  try {
-    const bookingId = req.params.id;
+  res.status(200).json({
+    success: true,
+    message: "Booking cancelled successfully",
+    data: booking,
+  });
+});
 
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Booking not found" });
-    }
+/* ========================
+   GLOBAL / ADMIN ENDPOINTS
+======================== */
+const getTotalBookings = asyncHandler(async (req, res) => {
+  const count = await bookingService.getGlobalTotalBookings();
 
-    booking.status = "cancelled";
-    await booking.save();
+  res.status(200).json({
+    success: true,
+    data: count,
+  });
+});
 
-    res.status(200).json({
-      success: true,
-      message: "Booking cancelled successfully",
-      booking,
-    });
-  } catch (err) {
-    console.error("Cancel booking error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
+const getTopVenuesByBooking = asyncHandler(async (req, res) => {
+  const topVenues = await bookingService.getTopVenuesByBooking();
 
-// Approve booking by ID
-const approveBooking = async (req, res) => {
-  try {
-    const bookingId = req.params.id;
-
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Booking not found" });
-    }
-
-    booking.status = "approved";
-    await booking.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Booking approved successfully",
-      booking,
-    });
-  } catch (err) {
-    console.error("Approve booking error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// Get bookings for the logged-in customer
-const getBookingsForCustomer = async (req, res) => {
-  try {
-    const customerId = req.user._id;
-
-    const bookings = await Booking.find({ customer: customerId }).populate(
-      "venue"
-    );
-
-    res.status(200).json({
-      success: true,
-      data: bookings,
-    });
-  } catch (err) {
-    console.error("Error fetching customer bookings:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-const getMonthlyEarningsForOwner = async (req, res) => {
-  try {
-    const ownerId = req.user._id;
-
-    const ownerVenues = await Venue.find({ owner: ownerId }).select("_id");
-    const venueIds = ownerVenues.map((v) => v._id);
-
-    const startOfYear = new Date(new Date().getFullYear(), 0, 1); // Jan 1
-    const endOfYear = new Date(new Date().getFullYear(), 11, 31, 23, 59, 59); // Dec 31
-
-    const earnings = await Booking.aggregate([
-      {
-        $match: {
-          venue: { $in: venueIds },
-          status: { $in: ["approved", "completed"] },
-          bookingDate: { $gte: startOfYear, $lte: endOfYear },
-        },
-      },
-      {
-        $group: {
-          _id: { $month: "$bookingDate" },
-          totalEarnings: { $sum: "$totalPrice" },
-          bookingCount: { $sum: 1 },
-        },
-      },
-      {
-        $sort: { _id: 1 },
-      },
-    ]);
-
-    // Format result to ensure all months are present
-    const formatted = Array.from({ length: 12 }, (_, i) => {
-      const monthData = earnings.find((e) => e._id === i + 1);
-      return {
-        month: new Date(0, i).toLocaleString("default", { month: "short" }),
-        totalEarnings: monthData?.totalEarnings || 0,
-        bookingCount: monthData?.bookingCount || 0,
-      };
-    });
-
-    res.status(200).json({
-      success: true,
-      data: formatted,
-    });
-  } catch (err) {
-    console.error("Error in getMonthlyEarningsForOwner", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-const getTotalBookingsForOwner = async (req, res) => {
-  try {
-    const ownerId = req.user._id;
-
-    // Find all venues owned by this owner
-    const ownerVenues = await Venue.find({ owner: ownerId }).select("_id");
-    const venueIds = ownerVenues.map((v) => v._id);
-
-    // Count bookings related to these venues with status approved/completed (or all)
-    const totalBookings = await Booking.countDocuments({
-      venue: { $in: venueIds },
-      status: { $in: ["approved", "completed"] }, // adjust status filter as needed
-    });
-
-    res.status(200).json({
-      success: true,
-      data: totalBookings,
-    });
-  } catch (err) {
-    console.error("Error fetching total bookings for owner", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-const getTotalBookings = async (req, res) => {
-  try {
-    const totalBookings = await Booking.countDocuments(); // counts all
-    res.status(200).json({
-      success: true,
-      message: "Total bookings fetched successfully",
-      data: totalBookings,
-    });
-  } catch (err) {
-    console.error("Error fetching total bookings:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-// controller/booking.js
-const getApprovedBookingsForVenue = async (req, res) => {
-  try {
-    const { venueIds } = req.body;
-
-    const counts = await Booking.aggregate([
-      {
-        $match: {
-          venue: { $in: venueIds.map((id) => new mongoose.Types.ObjectId(id)) },
-          status: "approved",
-        },
-      },
-      {
-        $group: {
-          _id: "$venue",
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const result = {};
-    venueIds.forEach((id) => {
-      result[id] = counts.find((c) => c._id.toString() === id)
-        ? counts.find((c) => c._id.toString() === id).count
-        : 0;
-    });
-
-    res.status(200).json({ success: true, data: result });
-  } catch (err) {
-    console.error("Bulk booking count fetch error", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-const getTopVenuesByBooking = async (req, res) => {
-  try {
-    const topVenues = await Booking.aggregate([
-      {
-        $group: {
-          _id: "$venue",
-          bookingCount: { $sum: 1 },
-        },
-      },
-      {
-        $sort: { bookingCount: -1 },
-      },
-      {
-        $limit: 5,
-      },
-      {
-        $lookup: {
-          from: "venues", // Collection name in MongoDB (usually plural lowercase)
-          localField: "_id",
-          foreignField: "_id",
-          as: "venueDetails",
-        },
-      },
-      {
-        $unwind: "$venueDetails",
-      },
-      {
-        $project: {
-          _id: 0,
-          venueId: "$venueDetails._id",
-          venueName: "$venueDetails.venueName",
-          location: "$venueDetails.location",
-          averageRating: "$venueDetails.averageRating",
-          capacity: "$venueDetails.capacity",
-          venueImages: "$venueDetails.venueImages",
-          pricePerHour: "$venueDetails.pricePerHour",
-          amenities: "$venueDetails.amenities",
-
-          bookingCount: 1,
-        },
-      },
-    ]);
-
-    res.status(200).json({
-      success: true,
-      message: "Top 5 venues by bookings",
-      data: topVenues,
-    });
-  } catch (err) {
-    console.error("Error fetching top venues:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
+  res.status(200).json({
+    success: true,
+    data: topVenues,
+  });
+});
 
 module.exports = {
-  getCustomerBookingCount,
   createBooking,
-  getBookingsForOwner,
-  cancelBooking,
-  approveBooking,
   getBookingsForCustomer,
+  getCustomerBookingCount,
+  getBookingsForOwner,
   getMonthlyEarningsForOwner,
   getTotalBookingsForOwner,
+  approveBooking,
+  cancelBooking,
   getTotalBookings,
-  getApprovedBookingsForVenue,
   getTopVenuesByBooking,
 };

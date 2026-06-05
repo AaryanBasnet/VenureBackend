@@ -5,11 +5,11 @@ const router = express.Router();
 const authController = require("../controller/authController");
 
 // Middlewares
-const validate = require("../middleware/validateMiddleware");
-const { loginLimiter, registerLimiter } = require("../middleware/rateLimiter");
+const validate = require("../middleware/validate");
+const { loginLimiter, registerLimiter } = require("../middleware/rateLimiters");
 
 // Validations (Ensure the path matches where you store your Zod schemas)
-const { registerSchema, loginSchema } = require("../validations/authSchemas"); 
+const { registerSchema, loginSchema } = require("../validators/authValidators"); 
 
 /* ========================
    AUTH ROUTES

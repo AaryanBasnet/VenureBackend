@@ -5,12 +5,12 @@ const router = express.Router();
 const passwordController = require("../controller/passwordController");
 
 // Middlewares
-const validate = require("../middleware/validateMiddleware");
+const validate = require("../middleware/validate");
 const { protectRoute } = require("../middleware/authMiddleware");
-const { forgotPasswordLimiter } = require("../middleware/rateLimiter");
+const { forgotPasswordLimiter } = require("../middleware/rateLimiters");
 
 // Validations
-const { forgotPasswordSchema, resetPasswordSchema } = require("../validations/authSchemas");
+const { forgotPasswordSchema, resetPasswordSchema } = require("../validators/authValidators");
 
 /* ========================
    PUBLIC PASSWORD RECOVERY

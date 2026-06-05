@@ -1,10 +1,11 @@
+// middleware/validateMiddleware.js
 const AppError = require("../utils/AppError");
 
-const validate = (schema) => (req, res, next) => {
-  const result = schema.safeParse(req.body);
+// Added target parameter (defaults to "body")
+const validate = (schema, target = "body") => (req, res, next) => {
+  const result = schema.safeParse(req[target]);
 
   if (!result.success) {
-    // Map all errors into a readable format (e.g., "email: Invalid email, password: Too short")
     const errorMessages = result.error.errors
       .map((err) => `${err.path.join(".")}: ${err.message}`)
       .join(", ");
@@ -12,8 +13,8 @@ const validate = (schema) => (req, res, next) => {
     return next(new AppError(`Validation Error - ${errorMessages}`, 400));
   }
 
-  // Assign the sanitized data back to req.body (strips out unknown fields)
-  req.body = result.data; 
+  // Assign the sanitized data back to the targeted request object
+  req[target] = result.data; 
   next();
 };
 

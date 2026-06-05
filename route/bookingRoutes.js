@@ -1,70 +1,43 @@
 const express = require("express");
 const router = express.Router();
-const {
-  getCustomerBookingCount,
-  createBooking,
-  getBookingsForOwner,
-  cancelBooking,
-  approveBooking,
-  getBookingsForCustomer,
-  getMonthlyEarningsForOwner,
-  getTotalBookingsForOwner,
-  getTotalBookings,
-  getApprovedBookingsForVenue,
-  getTopVenuesByBooking,
-} = require("../controller/bookingController");
+const bookingController = require("../controller/bookingController");
 
-const {
-  authenticateUser,
-  isOwner,
-  isAdmin,
-  authorizeBookingOwner,
-} = require("../middleware/authorizedUser");
+// Middlewares
+const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
+const validate = require("../middleware/validate");
 
-// Owner bookings
-router.get("/owner", authenticateUser, isOwner, getBookingsForOwner);
+// Zod Schemas
+const { createBookingSchema } = require("../validators/bookingValidators");
 
-// Customer bookings count & list
-router.get("/count", authenticateUser, getCustomerBookingCount);
-router.get("/my-bookings", authenticateUser, getBookingsForCustomer);
+// All booking routes require authentication
+router.use(protectRoute);
 
-// Create booking (customer)
-router.post("/createBooking", authenticateUser, createBooking);
-
-// Cancel / Approve booking - only venue owners of the related venue allowed
-router.put(
-  "/:id/cancel",
-  authenticateUser,
-
-  cancelBooking
-);
-router.put(
-  "/:id/approve",
-  authenticateUser,
-  isOwner,
-  authorizeBookingOwner,
-  approveBooking
-);
-
-// Owner stats
-router.get(
-  "/owner/monthly-earning",
-  authenticateUser,
-  isOwner,
-  getMonthlyEarningsForOwner
-);
-router.get("/owner/total", authenticateUser, isOwner, getTotalBookingsForOwner);
-
-// Admin-only
-router.get("/admin/total", authenticateUser, isAdmin, getTotalBookings);
+/* ========================
+   CUSTOMER ROUTES
+======================== */
 router.post(
-  "/venues/approved-bookings-count",
-  authenticateUser,
-  isAdmin,
-  getApprovedBookingsForVenue
+  "/",
+  authorizeRoles("Customer", "Admin"),
+  validate(createBookingSchema, "body"), // ✨ Zod catches bad data before it hits the controller
+  bookingController.createBooking
 );
 
-// Public endpoint for top venues by booking
-router.get("/top-venues", getTopVenuesByBooking);
+router.get("/my-bookings", authorizeRoles("Customer"), bookingController.getBookingsForCustomer);
+router.get("/my-count", authorizeRoles("Customer"), bookingController.getCustomerBookingCount);
+router.put("/:id/cancel", authorizeRoles("Customer", "Admin"), bookingController.cancelBooking);
+
+/* ========================
+   VENUE OWNER ROUTES
+======================== */
+router.get("/owner-bookings", authorizeRoles("VenueOwner"), bookingController.getBookingsForOwner);
+router.get("/owner-earnings", authorizeRoles("VenueOwner"), bookingController.getMonthlyEarningsForOwner);
+router.get("/owner-count", authorizeRoles("VenueOwner"), bookingController.getTotalBookingsForOwner);
+router.put("/:id/approve", authorizeRoles("VenueOwner"), bookingController.approveBooking);
+
+/* ========================
+   ADMIN / GLOBAL ROUTES
+======================== */
+router.get("/total", authorizeRoles("Admin"), bookingController.getTotalBookings);
+router.get("/top-venues", bookingController.getTopVenuesByBooking);
 
 module.exports = router;
