@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const logger = require("../utils/logger");
 
 const reviewSchema = new mongoose.Schema(
   {
@@ -28,6 +29,11 @@ const reviewSchema = new mongoose.Schema(
       type: String,
       maxlength: 1000,
       required: true,
+    },
+    isFeatured: {
+      type: Boolean,
+      default: false,
+      index: true, // Speeds up the query for the landing page
     },
     helpfulCount: {
       type: Number,
@@ -59,7 +65,7 @@ reviewSchema.statics.calculateAverageRating = async function (venueId) {
       totalReviews: stats.length > 0 ? stats[0].numOfReviews : 0,
     });
   } catch (err) {
-    console.error("Error updating venue average rating:", err);
+    logger.error({ message: "Error updating venue average rating", venueId, error: err.message });
   }
 };
 

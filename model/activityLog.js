@@ -12,7 +12,7 @@ const activityLogSchema = new mongoose.Schema(
       required: true,
     },
     data: {
-      type: Object, // Optional metadata
+      type: mongoose.Schema.Types.Mixed, // Allows arbitrary object data
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -23,4 +23,7 @@ const activityLogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("ActivityLog", activityLogSchema);
+// Enterprise Optimization: Index for fast Admin dashboard sorting
+activityLogSchema.index({ createdAt: -1 });
+
+module.exports = mongoose.models.ActivityLog || mongoose.model("ActivityLog", activityLogSchema);

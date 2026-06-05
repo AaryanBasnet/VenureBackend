@@ -1,4 +1,3 @@
-// models/contact.js
 const mongoose = require("mongoose");
 
 const contactSchema = new mongoose.Schema(
@@ -12,9 +11,13 @@ const contactSchema = new mongoose.Schema(
     message: {
       type: String,
       required: true,
+      maxlength: 2000, // DB-level fallback protection
     },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Contact", contactSchema);
+// Enterprise Optimization: Index for fast Admin sorting
+contactSchema.index({ createdAt: -1 });
+
+module.exports = mongoose.models.Contact || mongoose.model("Contact", contactSchema);

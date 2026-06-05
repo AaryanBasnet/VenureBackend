@@ -2,6 +2,7 @@ const Booking = require("../model/booking");
 const Venue = require("../model/venue");
 const User = require("../model/user");
 const jwt = require("jsonwebtoken");
+const logger = require("../utils/logger");
 
 exports.authenticateUser = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -70,7 +71,7 @@ exports.authorizeBookingOwner = async (req, res, next) => {
 
     next();
   } catch (err) {
-    console.error("Authorization error:", err);
+    logger.error({ message: "Authorization error", error: err.message });
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

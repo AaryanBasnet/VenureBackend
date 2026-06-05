@@ -54,10 +54,15 @@ const bookingSchema = new mongoose.Schema(
       required: true,
     },
     paymentDetails: {
-      paymentIntentId: String,
+      provider: { 
+        type: String, 
+        enum: ["stripe", "esewa", "khalti", "none"], 
+        default: "none" 
+      },
+      transactionId: String, // Holds Stripe paymentIntentId OR eSewa reference ID
       amountReceived: Number,
-      paymentMethod: String,
-      status: String,
+      currency: { type: String, default: "NPR" },
+      status: String, // "succeeded", "pending", "failed"
     },
     status: {
       type: String,
@@ -75,4 +80,4 @@ const bookingSchema = new mongoose.Schema(
 bookingSchema.index({ venue: 1, startTime: 1, endTime: 1 });
 bookingSchema.index({ customer: 1 }); // Fast lookup for user dashboards
 
-module.exports = mongoose.model("Booking", bookingSchema);
+module.exports = mongoose.models.Booking || mongoose.model("Booking", bookingSchema);

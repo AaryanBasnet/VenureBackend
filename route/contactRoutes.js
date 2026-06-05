@@ -1,11 +1,30 @@
-// routes/contactRoutes.js
 const express = require("express");
 const router = express.Router();
-const { submitContactForm , getAllContactSubmissions} = require("../controller/contactController");
-const { authenticateUser, isAdmin } = require("../middleware/authorizedUser");
+const contactController = require("../controller/contactController");
 
-router.post("/", submitContactForm);
+const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
+const validate = require("../middleware/validate");
+const { submitContactSchema } = require("../validators/contactValidators");
 
-router.get("/admin", authenticateUser, isAdmin, getAllContactSubmissions);
+/* =========================================================================
+   PUBLIC ROUTES
+========================================================================= */
+// Users do not need to be logged in to contact you
+router.post(
+  "/", 
+  validate(submitContactSchema, "body"), 
+  contactController.submitContactForm
+);
+
+/* =========================================================================
+   PROTECTED ROUTES
+========================================================================= */
+// Only Admins can view the submitted forms
+router.get(
+  "/admin/all", 
+  protectRoute, 
+  authorizeRoles("Admin"), 
+  contactController.getAllContactSubmissions
+);
 
 module.exports = router;

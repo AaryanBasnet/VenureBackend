@@ -2,6 +2,7 @@ const multer = require("multer");
 const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");
 const path = require("path");
+const logger = require("../utils/logger");
 
 function ensureDirExist(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -33,7 +34,7 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  console.log("File type:", file.mimetype);
+  logger.debug({ message: "File upload filter", mimetype: file.mimetype, fieldname: file.fieldname });
   if (file.mimetype.startsWith("image/")) {
     cb(null, true);
   } else {

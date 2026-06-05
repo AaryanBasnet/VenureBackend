@@ -1,11 +1,16 @@
 const express = require("express");
 const router = express.Router();
+const chatController = require("../controller/chatController");
 
-const {getUserChats, getOrCreateChat} = require('../controller/chatController')
-const { authenticateUser } = require("../middleware/authorizedUser");
+const { protectRoute } = require("../middleware/authMiddleware");
+const validate = require("../middleware/validate");
+const { createChatSchema, chatIdParamSchema } = require("../validators/chatValidators");
 
+router.use(protectRoute);
 
-router.get("/", authenticateUser, getUserChats);
-router.post("/", authenticateUser, getOrCreateChat);
+router.get("/", chatController.getUserChats);
+router.get("/unread-count", chatController.getUnreadMessageCount);
+router.post("/", validate(createChatSchema, "body"), chatController.getOrCreateChat);
+router.get("/:chatId/messages", validate(chatIdParamSchema, "params"), chatController.getChatMessages);
 
 module.exports = router;

@@ -39,8 +39,22 @@ const registerLimiter = rateLimit({
   },
 });
 
+/**
+ * Payment initiation limiter
+ * Prevents payment abuse and price-calculation hammering
+ */
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // 20 payment initiations per IP per hour
+  message: {
+    success: false,
+    message: "Too many payment requests. Please try again later.",
+  },
+});
+
 module.exports = {
   loginLimiter,
   forgotPasswordLimiter,
-  registerLimiter
+  registerLimiter,
+  paymentLimiter,
 };

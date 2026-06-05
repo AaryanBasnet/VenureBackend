@@ -1,6 +1,15 @@
 const mongoose = require("mongoose");
 const Stripe = require("stripe");
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+const getStripe = () => {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error(
+      "STRIPE_SECRET_KEY is not set in environment variables. " +
+      "Add it to your .env file before processing payments."
+    );
+  }
+  return Stripe(process.env.STRIPE_SECRET_KEY);
+};
 
 const Booking = require("../model/Booking");
 const Venue = require("../model/Venue");
@@ -61,7 +70,7 @@ const createBooking = async (bookingData, customerId) => {
   const finalPaymentIntentId = paymentIntentId || (paymentDetails && paymentDetails.paymentIntentId);
   if (!finalPaymentIntentId) throw new AppError("Payment intent ID is missing", 400);
 
-  const paymentIntent = await stripe.paymentIntents.retrieve(finalPaymentIntentId);
+  const paymentIntent = await getStripe().paymentIntents.retrieve(finalPaymentIntentId);
   if (paymentIntent.status !== "succeeded") {
     throw new AppError("Payment has not been successfully completed", 400);
   }

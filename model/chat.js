@@ -12,4 +12,7 @@ const chatSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Chat", chatSchema);
+// Fast lookup when finding a specific chat between two people for a venue
+chatSchema.index({ participants: 1, venueId: 1 });
+
+module.exports = mongoose.models.Chat || mongoose.model("Chat", chatSchema);

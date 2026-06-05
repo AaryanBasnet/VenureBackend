@@ -84,7 +84,7 @@ Create a `.env` file in the root directory:
 
 ```env
 PORT=5050
-MONGO_URI=mongodb://localhost:27017/venure
+DB_URL=mongodb://localhost:27017/venure
 JWT_SECRET=your_jwt_secret
 ```
 

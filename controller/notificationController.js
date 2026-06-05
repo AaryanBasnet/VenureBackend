@@ -1,43 +1,38 @@
+const asyncHandler = require("../utils/asyncHandler");
+const notificationService = require("../services/notificationService");
 
-const Notification = require("../model/notification");
+exports.getNotifications = asyncHandler(async (req, res) => {
+  const notifications = await notificationService.getUserNotifications(req.user._id);
 
-// GET /notification - get all notifications for logged-in user
-exports.getNotifications = async (req, res) => {
-  try {
-    const userId = req.user._id;
+  res.status(200).json({
+    success: true,
+    data: notifications,
+  });
+});
 
-    const notifications = await Notification.find({ recipient: userId })
-      .sort({ createdAt: -1 })
-      .limit(50);
+exports.markAsRead = asyncHandler(async (req, res) => {
+  const notification = await notificationService.markAsRead(req.params.id, req.user._id);
 
-    res.status(200).json(notifications);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch notifications" });
-  }
-};
+  res.status(200).json({
+    success: true,
+    data: notification,
+  });
+});
 
-// PATCH /notification/:id/read - mark a single notification as read
-exports.markAsRead = async (req, res) => {
-  try {
-    const { id } = req.params;
+exports.markAllAsRead = asyncHandler(async (req, res) => {
+  await notificationService.markAllAsRead(req.user._id);
 
-    await Notification.findByIdAndUpdate(id, { read: true });
+  res.status(200).json({
+    success: true,
+    message: "All notifications marked as read",
+  });
+});
 
-    res.status(200).json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to mark as read" });
-  }
-};
+exports.deleteNotification = asyncHandler(async (req, res) => {
+  await notificationService.deleteNotification(req.params.id, req.user._id);
 
-// PATCH /notification/read-all - mark all as read for user
-exports.markAllAsRead = async (req, res) => {
-  try {
-    const userId = req.user._id;
-
-    await Notification.updateMany({ recipient: userId, read: false }, { read: true });
-
-    res.status(200).json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to mark all as read" });
-  }
-};
+  res.status(200).json({
+    success: true,
+    message: "Notification deleted",
+  });
+});

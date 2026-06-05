@@ -36,6 +36,12 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
+  // Add this inside your userSchema definition:
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    select: false, // Hides this field from standard frontend queries
+  },
   favorites: [
     {
       type: mongoose.Schema.Types.ObjectId,
@@ -66,5 +72,4 @@ userSchema.methods.getResetPasswordCode = function () {
   return code; 
 };
 
-const User = mongoose.model("User", userSchema);
-module.exports = User;
+module.exports = mongoose.models.User || mongoose.model("User", userSchema);

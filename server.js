@@ -17,7 +17,15 @@ const io = setupSocket(server);
 app.set("io", io);
 
 // Validate Crucial Env Vars
-const requiredEnv = ["MONGO_URI", "JWT_SECRET", "FRONTEND_URL"];
+// server.js
+const requiredEnv = [
+  "DB_URL", 
+  "JWT_SECRET", 
+  "FRONTEND_URL",
+  "CLOUDINARY_CLOUD_NAME", 
+  "CLOUDINARY_API_KEY",    
+  "CLOUDINARY_API_SECRET"  
+];
 requiredEnv.forEach((key) => {
   if (!process.env[key]) {
     logger.error(`❌ Missing critical environment variable: ${key}`);

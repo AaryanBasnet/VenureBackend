@@ -77,4 +77,4 @@ const VenueSchema = new mongoose.Schema(
 // General search index
 VenueSchema.index({ venueName: "text", "location.city": "text" });
 
-module.exports = mongoose.model("Venue", VenueSchema);
+module.exports = mongoose.models.Venue || mongoose.model("Venue", VenueSchema);
