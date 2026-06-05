@@ -1,7 +1,7 @@
-const Stripe = require("stripe");
+﻿const Stripe = require("stripe");
 const crypto = require("crypto"); // Needed for eSewa HMAC signatures
-const Booking = require("../model/Booking");
-const Venue = require("../model/Venue");
+const Booking = require("../model/booking");
+const Venue = require("../model/venue");
 const AppError = require("../utils/AppError");
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);

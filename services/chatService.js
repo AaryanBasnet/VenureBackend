@@ -1,7 +1,7 @@
-const Chat = require("../model/Chat");
-const Message = require("../model/Message");
-const User = require("../model/User");
-const Notification = require("../model/Notification");
+﻿const Chat = require("../model/chat");
+const Message = require("../model/message");
+const User = require("../model/user");
+const Notification = require("../model/notification");
 const AppError = require("../utils/AppError");
 
 const getUserChats = async (userId, venueId) => {

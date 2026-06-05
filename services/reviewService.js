@@ -1,6 +1,6 @@
-const Review = require("../model/Review"); 
-const Venue = require("../model/Venue");   
-const Booking = require("../model/Booking");
+﻿const Review = require("../model/review"); 
+const Venue = require("../model/venue");   
+const Booking = require("../model/booking");
 const AppError = require("../utils/AppError");
 
 /* ========================

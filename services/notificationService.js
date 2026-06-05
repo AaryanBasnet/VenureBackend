@@ -1,4 +1,4 @@
-const Notification = require("../model/Notification");
+﻿const Notification = require("../model/notification");
 const AppError = require("../utils/AppError");
 
 const getUserNotifications = async (userId, limit = 50) => {

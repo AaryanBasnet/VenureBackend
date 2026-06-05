@@ -1,5 +1,5 @@
-const Venue = require("../model/Venue");
-const Notification = require("../model/Notification"); // Standardized capitalization
+﻿const Venue = require("../model/venue");
+const Notification = require("../model/notification"); // Standardized capitalization
 const AppError = require("../utils/AppError");
 const { cloudinary } = require("../middleware/uploadMiddleware");
 const logger = require("../utils/logger");
