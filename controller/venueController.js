@@ -5,12 +5,13 @@ const venueService = require("../services/venueService");
    PUBLIC / USER CONTROLLERS
 ======================== */
 exports.getAllApprovedVenues = asyncHandler(async (req, res) => {
-  // req.query is validated and type-casted by Zod
   const result = await venueService.getApprovedVenues(req.query);
-  
+
   res.status(200).json({
     success: true,
-    ...result,
+    data: result.venues,
+    total: result.total,
+    pages: result.pages,
   });
 });
 

@@ -9,7 +9,12 @@ const validate = require("../middleware/validate");
 // Zod Schemas
 const { createBookingSchema } = require("../validators/bookingValidators");
 
-// All booking routes require authentication
+/* ========================
+   PUBLIC ROUTES
+======================== */
+router.get("/top-venues", bookingController.getTopVenuesByBooking);
+
+// All booking routes below require authentication
 router.use(protectRoute);
 
 /* ========================
@@ -38,6 +43,5 @@ router.put("/:id/approve", authorizeRoles("VenueOwner"), bookingController.appro
    ADMIN / GLOBAL ROUTES
 ======================== */
 router.get("/total", authorizeRoles("Admin"), bookingController.getTotalBookings);
-router.get("/top-venues", bookingController.getTopVenuesByBooking);
 
 module.exports = router;

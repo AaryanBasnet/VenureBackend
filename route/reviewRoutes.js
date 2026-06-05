@@ -17,11 +17,10 @@ router.get("/featured", reviewController.getFeaturedReviews);
 /* =========================================================================
    PROTECTED ROUTES
 ========================================================================= */
-router.use(protectRoute);
-
 // Customer Action: Leave a review
 router.post(
   "/venue/:venueId",
+  protectRoute,
   authorizeRoles("Customer", "Admin"),
   validate(createReviewSchema, "body"),
   reviewController.addReview
@@ -30,6 +29,7 @@ router.post(
 // Customer/Admin Action: Delete a review
 router.delete(
   "/:reviewId",
+  protectRoute,
   authorizeRoles("Customer", "Admin"),
   reviewController.deleteReview
 );
@@ -37,12 +37,14 @@ router.delete(
 // Venue Owner Dashboard: See all reviews left on their venues
 router.get(
   "/owner",
+  protectRoute,
   authorizeRoles("VenueOwner"),
   reviewController.getReviewsForOwnerVenues
 );
 
 router.patch(
   "/:reviewId/feature",
+  protectRoute,
   authorizeRoles("Admin"),
   reviewController.toggleFeaturedStatus
 );

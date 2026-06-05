@@ -7,11 +7,18 @@ const authService = require("../services/authService");
    Enterprise standard: 7 days, HttpOnly (prevents XSS), 
    Secure (requires HTTPS in production), SameSite (prevents CSRF)
 ========================================================================= */
-const getCookieOptions = () => ({
+const getRefreshCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production", 
+  secure: process.env.NODE_ENV === "production",
   sameSite: "strict",
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+});
+
+const getAccessCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+  maxAge: 15 * 60 * 1000, // 15 minutes
 });
 
 /* =========================================================================
@@ -50,14 +57,14 @@ const loginUser = asyncHandler(async (req, res) => {
     ip
   );
 
-  // 2. Lock the Refresh Token in an impenetrable cookie
-  res.cookie("refreshToken", result.refreshToken, getCookieOptions());
+  // 2. Set both tokens as HTTP-Only cookies — client never touches them directly
+  res.cookie("accessToken", result.accessToken, getAccessCookieOptions());
+  res.cookie("refreshToken", result.refreshToken, getRefreshCookieOptions());
 
-  // 3. Send ONLY the short-lived Access Token in the JSON body
+  // 3. Return the user object in the standard envelope
   res.status(200).json({
     success: true,
-    accessToken: result.accessToken,
-    user: result.user,
+    data: result.user,
   });
 });
 
@@ -78,14 +85,11 @@ const refreshToken = asyncHandler(async (req, res) => {
     ip
   );
 
-  // 2. Overwrite the old cookie with the brand-new Refresh Token
-  res.cookie("refreshToken", newRefreshToken, getCookieOptions());
+  // 2. Rotate both cookies with fresh tokens
+  res.cookie("accessToken", newAccessToken, getAccessCookieOptions());
+  res.cookie("refreshToken", newRefreshToken, getRefreshCookieOptions());
 
-  // 3. Send the fresh Access Token to the client
-  res.status(200).json({
-    success: true,
-    accessToken: newAccessToken,
-  });
+  res.status(200).json({ success: true });
 });
 
 /* ================= LOGOUT ================= */
@@ -98,16 +102,24 @@ const logoutUser = asyncHandler(async (req, res) => {
     await authService.logout(refreshToken);
   }
 
-  // 2. Instruct the browser to instantly delete the cookie
-  res.clearCookie("refreshToken", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-  });
+  // 2. Instruct the browser to instantly delete both cookies
+  const clearOpts = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict" };
+  res.clearCookie("accessToken", clearOpts);
+  res.clearCookie("refreshToken", clearOpts);
 
   res.status(200).json({
     success: true,
     message: "Logged out successfully",
+  });
+});
+
+/* ================= GET ME ================= */
+
+const getMe = asyncHandler(async (req, res) => {
+  // req.user is populated by protectRoute
+  res.status(200).json({
+    success: true,
+    data: req.user,
   });
 });
 
@@ -116,4 +128,5 @@ module.exports = {
   loginUser,
   refreshToken,
   logoutUser,
+  getMe,
 };

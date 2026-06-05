@@ -77,10 +77,12 @@ const login = async (email, password, userAgent, ip) => {
     accessToken,
     refreshToken, // Sent to controller to put in HTTP-Only cookie
     user: {
-      id: user._id,
+      _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
+      phone: user.phone,
+      avatar: user.avatar,
     },
   };
 };

@@ -7,15 +7,8 @@ const AppError = require("../utils/AppError");
 ======================== */
 const protectRoute = async (req, res, next) => {
   try {
-    let token;
-
-    // 1. Get token from headers
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith("Bearer")
-    ) {
-      token = req.headers.authorization.split(" ")[1];
-    }
+    // Read the short-lived access token from the HTTP-Only cookie
+    const token = req.cookies.accessToken;
 
     if (!token) {
       return next(new AppError("Not authorized, token missing", 401));

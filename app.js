@@ -4,7 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const helmet = require("helmet");
-const mongoSanitize = require("express-mongo-sanitize");
+// const mongoSanitize = require("express-mongo-sanitize");
 const cookieParser = require("cookie-parser");
 
 
@@ -67,7 +67,7 @@ app.use(
   })
 );
 
-app.use(mongoSanitize());
+
 
 /* ========================
    REQUEST COMPRESSION
@@ -112,6 +112,9 @@ app.use(limiter);
 
 app.use(cookieParser());
 
+// app.use(mongoSanitize({
+//   replaceWith: '_' 
+// }));
 
 /* ========================
    TEST ROUTES
