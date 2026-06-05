@@ -1,4 +1,4 @@
-const User = require("../model/User");
+﻿const User = require("../model/user");
 const AppError = require("../utils/AppError");
 const { cloudinary } = require("../middleware/uploadMiddleware");
 const logger = require("../utils/logger");

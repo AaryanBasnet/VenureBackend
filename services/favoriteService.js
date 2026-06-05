@@ -1,5 +1,5 @@
-const User = require("../model/User");
-const Venue = require("../model/Venue");
+﻿const User = require("../model/user");
+const Venue = require("../model/venue");
 const AppError = require("../utils/AppError");
 
 const toggleFavorite = async (userId, venueId) => {

@@ -1,5 +1,5 @@
-const ActivityLog = require("../model/ActivityLog");
-const Booking = require("../model/Booking");
+﻿const ActivityLog = require("../model/activityLog");
+const Booking = require("../model/booking");
 const logger = require("../utils/logger");
 
 /* =========================================================================

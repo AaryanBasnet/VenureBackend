@@ -1,4 +1,4 @@
-const Contact = require("../model/Contact");
+﻿const Contact = require("../model/contact");
 
 const submitContact = async (payload) => {
   const contact = await Contact.create(payload);

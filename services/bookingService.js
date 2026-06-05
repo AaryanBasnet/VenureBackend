@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+﻿const mongoose = require("mongoose");
 const Stripe = require("stripe");
 
 const getStripe = () => {
@@ -11,8 +11,8 @@ const getStripe = () => {
   return Stripe(process.env.STRIPE_SECRET_KEY);
 };
 
-const Booking = require("../model/Booking");
-const Venue = require("../model/Venue");
+const Booking = require("../model/booking");
+const Venue = require("../model/venue");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
 
