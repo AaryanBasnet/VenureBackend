@@ -7,17 +7,21 @@ const authService = require("../services/authService");
    Enterprise standard: 7 days, HttpOnly (prevents XSS), 
    Secure (requires HTTPS in production), SameSite (prevents CSRF)
 ========================================================================= */
+const isProduction = process.env.NODE_ENV === "production";
+
+// Cross-site (Vercel → Render) requires SameSite=None + Secure.
+// Locally (same origin) Lax is fine and doesn't need HTTPS.
 const getRefreshCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 });
 
 const getAccessCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
   maxAge: 15 * 60 * 1000, // 15 minutes
 });
 
@@ -103,7 +107,7 @@ const logoutUser = asyncHandler(async (req, res) => {
   }
 
   // 2. Instruct the browser to instantly delete both cookies
-  const clearOpts = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict" };
+  const clearOpts = { httpOnly: true, secure: isProduction, sameSite: isProduction ? "none" : "lax" };
   res.clearCookie("accessToken", clearOpts);
   res.clearCookie("refreshToken", clearOpts);
 
