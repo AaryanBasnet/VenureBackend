@@ -17,10 +17,28 @@ exports.getAllApprovedVenues = asyncHandler(async (req, res) => {
 
 exports.getVenueById = asyncHandler(async (req, res) => {
   const venue = await venueService.getVenueById(req.params.id);
-  
+
   res.status(200).json({
     success: true,
     data: venue,
+  });
+});
+
+exports.getCategoryCounts = asyncHandler(async (req, res) => {
+  const counts = await venueService.getCategoryCounts();
+
+  res.status(200).json({
+    success: true,
+    data: counts,
+  });
+});
+
+exports.getFeaturedVenues = asyncHandler(async (req, res) => {
+  const venues = await venueService.getFeaturedVenues();
+
+  res.status(200).json({
+    success: true,
+    data: venues,
   });
 });
 
@@ -115,10 +133,20 @@ exports.updateVenueStatus = asyncHandler(async (req, res) => {
   // Pass socket instance to the service to emit real-time notifications
   const io = req.app.get("io");
   const venue = await venueService.updateVenueStatus(req.params.id, req.body.status, io);
-  
+
   res.status(200).json({
     success: true,
     message: `Venue status updated to ${req.body.status}`,
+    data: venue,
+  });
+});
+
+exports.toggleFeatured = asyncHandler(async (req, res) => {
+  const venue = await venueService.toggleFeatured(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    message: venue.isFeatured ? "Venue is now featured" : "Venue removed from featured",
     data: venue,
   });
 });

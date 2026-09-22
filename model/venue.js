@@ -5,6 +5,15 @@ const imageSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Matches the venue-type slugs on the public landing page (src/features/landing/content/landingContent.js)
+const VENUE_CATEGORIES = [
+  "heritage-courtyards",
+  "garden-estates",
+  "intimate-halls",
+  "mountain-retreats",
+  "rooftop-terraces",
+];
+
 const VenueSchema = new mongoose.Schema(
   {
     owner: {
@@ -17,6 +26,11 @@ const VenueSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+    category: {
+      type: String,
+      enum: VENUE_CATEGORIES,
+      index: true, // Speeds up the landing page's per-category counts and /venues?category= filter
     },
     //  Standardized address + GeoJSON for map queries
     location: {
@@ -70,6 +84,11 @@ const VenueSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    isFeatured: {
+      type: Boolean,
+      default: false,
+      index: true, // Speeds up the query for the landing page's featured venues
+    },
   },
   { timestamps: true }
 );
@@ -78,3 +97,4 @@ const VenueSchema = new mongoose.Schema(
 VenueSchema.index({ venueName: "text", "location.city": "text" });
 
 module.exports = mongoose.models.Venue || mongoose.model("Venue", VenueSchema);
+module.exports.VENUE_CATEGORIES = VENUE_CATEGORIES;

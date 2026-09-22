@@ -137,12 +137,13 @@ const softDeleteVenue = async (venueId, userId, userRole) => {
    USER / DISCOVERY
 ======================== */
 const getApprovedVenues = async (filters) => {
-  const { search, city, lng, lat, radius } = filters;
+  const { search, city, category, lng, lat, radius } = filters;
   const { page, limit, skip } = toPaging(filters);
   const query = { status: "approved", isDeleted: false };
 
   if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
   if (city) query["location.city"] = String(city);
+  if (category) query.category = category;
 
   // MAPS INTEGRATION
   if (lng && lat && radius) {
@@ -158,6 +159,27 @@ const getApprovedVenues = async (filters) => {
   const venues = await Venue.find(query).skip(skip).limit(limit).lean();
 
   return { venues, total, pages: Math.ceil(total / limit) };
+};
+
+// Landing page venue-type cards: how many approved venues exist per category
+const getCategoryCounts = async () => {
+  const rows = await Venue.aggregate([
+    { $match: { status: "approved", isDeleted: false, category: { $ne: null } } },
+    { $group: { _id: "$category", count: { $sum: 1 } } },
+  ]);
+
+  return rows.reduce((counts, row) => {
+    counts[row._id] = row.count;
+    return counts;
+  }, {});
+};
+
+// Landing page "Our Finest Heritage Spaces": admin-curated picks
+const getFeaturedVenues = async (limit = 3) => {
+  return await Venue.find({ isFeatured: true, status: "approved", isDeleted: false })
+    .sort("-createdAt")
+    .limit(limit)
+    .lean();
 };
 
 // Public venue page: only approved venues, and no owner contact details
@@ -221,6 +243,16 @@ const updateVenueStatus = async (venueId, status, io) => {
   return venue;
 };
 
+const toggleFeatured = async (venueId) => {
+  const venue = await Venue.findOne({ _id: venueId, isDeleted: false });
+  if (!venue) throw new AppError("Venue not found", 404);
+
+  venue.isFeatured = !venue.isFeatured;
+  await venue.save();
+
+  return venue;
+};
+
 // Export ALL functions to satisfy the Controller
 module.exports = {
   createVenue,
@@ -230,9 +262,12 @@ module.exports = {
   getApprovedVenueCountByOwner,
   softDeleteVenue,
   getApprovedVenues,
+  getCategoryCounts,
+  getFeaturedVenues,
   getVenueById,
   getAllVenues,
   getApprovedVenueCount,
   updateVenueStatus,
+  toggleFeatured,
   deleteExternalImages
 };

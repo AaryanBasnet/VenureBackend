@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const { VENUE_CATEGORIES } = require("../model/venue");
 
 // Utility to parse JSON strings coming from multipart/form-data
 const parseJsonString = (val) => {
@@ -10,6 +11,7 @@ const parseJsonString = (val) => {
 
 const createVenueSchema = z.object({
   venueName: z.string().min(2, "Venue name must be at least 2 characters"),
+  category: z.enum(VENUE_CATEGORIES, { message: "Select a venue category" }),
   capacity: z.coerce.number().min(1, "Capacity must be at least 1"),
   description: z.string().optional(),
   pricePerHour: z.coerce.number().min(0, "Price cannot be negative"),
@@ -35,6 +37,7 @@ const createVenueSchema = z.object({
 const searchVenuesSchema = z.object({
   search: z.string().optional(),
   city: z.string().optional(),
+  category: z.enum(VENUE_CATEGORIES).optional(),
   lng: z.coerce.number().optional(), // For Maps
   lat: z.coerce.number().optional(), // For Maps
   radius: z.coerce.number().default(10), // Miles
@@ -44,6 +47,7 @@ const searchVenuesSchema = z.object({
 
 const updateVenueSchema = z.object({
   venueName: z.string().min(2, "Venue name must be at least 2 characters").optional(),
+  category: z.enum(VENUE_CATEGORIES).optional(),
   capacity: z.coerce.number().min(1, "Capacity must be at least 1").optional(),
   description: z.string().optional(),
   pricePerHour: z.coerce.number().min(0, "Price cannot be negative").optional(),

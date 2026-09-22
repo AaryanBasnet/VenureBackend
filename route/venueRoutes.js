@@ -17,10 +17,16 @@ const { createVenueSchema, searchVenuesSchema, updateVenueSchema } = require("..
 ========================================================================= */
 // GET /api/venues?city=London&radius=10
 router.get(
-  "/", 
-  validate(searchVenuesSchema, "query"), 
+  "/",
+  validate(searchVenuesSchema, "query"),
   venueController.getAllApprovedVenues
 );
+
+// Landing page: per-category counts for the venue-type cards. Must come before "/:id".
+router.get("/categories/counts", venueController.getCategoryCounts);
+
+// Landing page: admin-curated featured venues. Must come before "/:id".
+router.get("/featured", venueController.getFeaturedVenues);
 
 // GET /api/venues/:id
 router.get("/:id", venueController.getVenueById);
@@ -96,6 +102,12 @@ router.patch(
   "/:id/status",
   authorizeRoles("Admin"),
   venueController.updateVenueStatus
+);
+
+router.patch(
+  "/:id/feature",
+  authorizeRoles("Admin"),
+  venueController.toggleFeatured
 );
 
 module.exports = router;

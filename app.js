@@ -23,6 +23,7 @@ const notificationRoutes = require("./route/notificationRoutes");
 const reviewRoutes = require("./route/reviewRoutes");
 const contactRoutes = require("./route/contactRoutes");
 const paymentRoutes = require("./route/paymentRoutes");
+const newsletterRoutes = require("./route/newsletterRoutes");
 
 const errorHandler = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
@@ -147,6 +148,7 @@ app.use("/api/notification", notificationRoutes);
 app.use("/api", reviewRoutes);
 // app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/newsletter", newsletterRoutes);
 
 /* ========================
    HEALTH CHECK
