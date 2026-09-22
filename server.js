@@ -4,23 +4,25 @@ dotenv.config({
 });
 
 const http = require("http");
+const mongoose = require("mongoose");
 const app = require("./app");
 const connectDB = require("./database/db");
 const setupSocket = require("./socket/socket");
+const { isAllowedOrigin } = require("./utils/allowedOrigins");
 const logger = require("./utils/logger"); 
 
 const PORT = process.env.PORT || 5050;
 const server = http.createServer(app);
 
 // Socket Setup
-const io = setupSocket(server);
+const io = setupSocket(server, isAllowedOrigin);
 app.set("io", io);
 
 // Validate Crucial Env Vars
-// server.js
 const requiredEnv = [
-  "DB_URL", 
-  "JWT_SECRET", 
+  "DB_URL",
+  "JWT_SECRET",
+  "REFRESH_TOKEN_SECRET",
   "FRONTEND_URL",
   "CLOUDINARY_CLOUD_NAME", 
   "CLOUDINARY_API_KEY",    
@@ -32,6 +34,15 @@ requiredEnv.forEach((key) => {
     process.exit(1);
   }
 });
+
+if (process.env.JWT_SECRET === process.env.REFRESH_TOKEN_SECRET) {
+  logger.error("JWT_SECRET and REFRESH_TOKEN_SECRET must be different values");
+  process.exit(1);
+}
+
+if (!process.env.STRIPE_SECRET_KEY) {
+  logger.warn("STRIPE_SECRET_KEY is not set: payments and bookings will be unavailable");
+}
 
 const startServer = async () => {
   try {
@@ -53,9 +64,10 @@ startServer();
 const shutdown = (signal) => {
   logger.warn(` Received ${signal}. Terminating connections gracefully...`);
 
+  io.close();
   server.close(async () => {
     logger.info("HTTP server closed.");
-    // Close DB 
+    await mongoose.connection.close();
     process.exit(0);
   });
 

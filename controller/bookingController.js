@@ -70,7 +70,7 @@ const getTotalBookingsForOwner = asyncHandler(async (req, res) => {
    STATUS MODIFICATIONS
 ======================== */
 const approveBooking = asyncHandler(async (req, res) => {
-  const booking = await bookingService.modifyBookingStatus(req.params.id, "approved");
+  const booking = await bookingService.approveBooking(req.params.id, req.user);
 
   res.status(200).json({
     success: true,
@@ -80,7 +80,7 @@ const approveBooking = asyncHandler(async (req, res) => {
 });
 
 const cancelBooking = asyncHandler(async (req, res) => {
-  const booking = await bookingService.modifyBookingStatus(req.params.id, "cancelled");
+  const booking = await bookingService.cancelBooking(req.params.id, req.user);
 
   res.status(200).json({
     success: true,

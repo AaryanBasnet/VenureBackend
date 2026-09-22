@@ -61,7 +61,7 @@ exports.uploadVenueImages = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "No images provided" });
   }
 
-  const venue = await venueService.updateVenueImages(req.params.id, req.files);
+  const venue = await venueService.updateVenueImages(req.params.id, req.user._id, req.files);
   
   res.status(200).json({
     success: true,

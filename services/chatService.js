@@ -1,4 +1,6 @@
-﻿const Chat = require("../model/chat");
+﻿const mongoose = require("mongoose");
+const Chat = require("../model/chat");
+const Venue = require("../model/venue");
 const Message = require("../model/message");
 const User = require("../model/user");
 const Notification = require("../model/notification");
@@ -15,6 +17,22 @@ const getUserChats = async (userId, venueId) => {
 };
 
 const getOrCreateChat = async (userId, participantId, venueId) => {
+  if (userId.toString() === participantId.toString()) {
+    throw new AppError("You cannot start a chat with yourself", 400);
+  }
+
+  // Chats are always about a venue and must include that venue's owner
+  const venue = await Venue.findOne({ _id: venueId, isDeleted: false }).select("owner");
+  if (!venue) throw new AppError("Venue not found", 404);
+
+  const ownerId = venue.owner.toString();
+  if (userId.toString() !== ownerId && participantId.toString() !== ownerId) {
+    throw new AppError("Chats must be with the venue owner", 403);
+  }
+
+  const participant = await User.exists({ _id: participantId, isDeleted: { $ne: true } });
+  if (!participant) throw new AppError("User not found", 404);
+
   let chat = await Chat.findOne({
     participants: { $all: [userId, participantId] },
     venueId: venueId,
@@ -46,10 +64,17 @@ const getUnreadMessageCount = async (userId) => {
   return await Message.countDocuments({ receiver: userId, seen: false });
 };
 
-// Handle real-time socket message saving securely
-const saveMessage = async (chatId, senderId, receiverId, text) => {
+// Handle real-time socket message saving securely.
+// The receiver is always the other participant of the chat, never taken from the client.
+const saveMessage = async (chatId, senderId, text) => {
+  if (!mongoose.isValidObjectId(chatId)) throw new AppError("Chat not found or unauthorized", 403);
+
   const chat = await Chat.findOne({ _id: chatId, participants: senderId });
   if (!chat) throw new AppError("Chat not found or unauthorized", 403);
+
+  const receiver = chat.participants.find((p) => p.toString() !== senderId.toString());
+  if (!receiver) throw new AppError("Chat has no recipient", 400);
+  const receiverId = receiver.toString();
 
   const senderUser = await User.findById(senderId).select("name");
   if (!senderUser) throw new AppError("Sender not found", 404);
@@ -83,6 +108,7 @@ const saveMessage = async (chatId, senderId, receiverId, text) => {
       seen: false,
     },
     notificationPayload: notification,
+    receiverId,
   };
 };
 

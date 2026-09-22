@@ -2,7 +2,6 @@
 
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 const helmet = require("helmet");
 // const mongoSanitize = require("express-mongo-sanitize");
 const cookieParser = require("cookie-parser");
@@ -27,6 +26,8 @@ const paymentRoutes = require("./route/paymentRoutes");
 
 const errorHandler = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
+const AppError = require("./utils/AppError");
+const { configured: configuredOrigins, isAllowedOrigin } = require("./utils/allowedOrigins");
 
 const app = express();
 
@@ -45,7 +46,7 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "https://js.stripe.com"],
         frameSrc: ["'self'", "https://js.stripe.com", "https://hooks.stripe.com"],
-        connectSrc: ["'self'", process.env.FRONTEND_URL || "http://localhost:5173"],
+        connectSrc: ["'self'", ...configuredOrigins],
         imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
@@ -60,20 +61,14 @@ app.use(
   })
 );
 
-const allowedOrigins = [
-  (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, ""),
-  "http://localhost:5173",
-  "http://localhost:5174",
-];
-
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow server-to-server requests (no origin) and listed origins
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
-        callback(new Error(`CORS: origin ${origin} not allowed`));
+        callback(new AppError("Origin not allowed", 403));
       }
     },
     credentials: true,
@@ -104,17 +99,12 @@ if (process.env.NODE_ENV === "development") {
 app.use(express.json({ limit: "10kb" }));
 
 /* ========================
-   STATIC FILES
-======================== */
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-/* ========================
    GLOBAL RATE LIMITER
-   (basic protection layer)
+   (basic protection layer — sensitive routes have their own stricter limits)
 ======================== */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: 200, // limit each IP
+  max: 1000, // per IP; the SPA makes many calls per page and users can share an IP
   message: {
     success: false,
     message: "Too many requests, please try again later.",

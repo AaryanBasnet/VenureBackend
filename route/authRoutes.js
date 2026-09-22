@@ -36,4 +36,7 @@ router.post("/logout", authController.logoutUser);
 // Returns the currently authenticated user (hydrates client store on load)
 router.get("/me", protectRoute, authController.getMe);
 
+// Short-lived token the client passes in the Socket.io handshake
+router.get("/socket-token", protectRoute, authController.getSocketToken);
+
 module.exports = router;

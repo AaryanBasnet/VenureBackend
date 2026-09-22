@@ -1,20 +1,50 @@
-﻿const mongoose = require("mongoose");
-const Stripe = require("stripe");
-
-const getStripe = () => {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error(
-      "STRIPE_SECRET_KEY is not set in environment variables. " +
-      "Add it to your .env file before processing payments."
-    );
-  }
-  return Stripe(process.env.STRIPE_SECRET_KEY);
-};
-
 const Booking = require("../model/booking");
 const Venue = require("../model/venue");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
+const { getStripe } = require("../utils/stripe");
+const { quoteBooking, nprToUsdCents } = require("./pricingService");
+const { ACTIVE_BOOKING_STATUSES } = require("./paymentService");
+
+const sameInstant = (a, b) => new Date(a).getTime() === new Date(b).getTime();
+
+/**
+ * Proves a Stripe PaymentIntent was paid by this customer, for this venue and slot,
+ * for exactly the server-calculated amount.
+ */
+const assertPaymentMatchesBooking = (paymentIntent, { customerId, venueId, quote }) => {
+  if (paymentIntent.status !== "succeeded") {
+    throw new AppError("Payment has not been successfully completed", 400);
+  }
+
+  const meta = paymentIntent.metadata || {};
+  const matches =
+    meta.userId === customerId.toString() &&
+    meta.venueId === venueId.toString() &&
+    sameInstant(meta.startTime, quote.start) &&
+    sameInstant(meta.endTime, quote.end) &&
+    paymentIntent.currency === "usd" &&
+    paymentIntent.amount_received === nprToUsdCents(quote.totalPrice);
+
+  if (!matches) {
+    logger.warn({
+      message: "Payment does not match booking",
+      customerId: customerId.toString(),
+      paymentIntentId: paymentIntent.id,
+    });
+    throw new AppError("Payment does not match this booking.", 400);
+  }
+};
+
+// Best effort: a customer must never be charged for a booking we could not create
+const refundPayment = async (paymentIntentId, reason) => {
+  try {
+    await getStripe().refunds.create({ payment_intent: paymentIntentId });
+    logger.warn({ message: "Payment refunded after failed booking", paymentIntentId, reason });
+  } catch (err) {
+    logger.error({ message: "AUTOMATIC REFUND FAILED - manual refund required", paymentIntentId, reason, error: err.message });
+  }
+};
 
 /* ========================
    CORE BOOKING CREATION
@@ -26,89 +56,84 @@ const createBooking = async (bookingData, customerId) => {
     endTime,
     numberOfGuests,
     selectedAddons = [],
-    totalPrice: frontendPrice, // Used only to check against our internal math
+    totalPrice: frontendPrice, // Only used to detect a stale price on the client
     paymentIntentId,
-    paymentDetails
+    paymentDetails,
+    eventType,
+    specialRequirements,
+    contactName,
+    phoneNumber,
   } = bookingData;
 
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+  const finalPaymentIntentId = paymentIntentId || paymentDetails?.paymentIntentId;
+  if (!finalPaymentIntentId) throw new AppError("Payment intent ID is missing", 400);
 
-  // 1. Fetch Venue & Validate Capacity
+  // 1. A payment can only ever back one booking
+  const alreadyUsed = await Booking.exists({ "paymentDetails.transactionId": finalPaymentIntentId });
+  if (alreadyUsed) throw new AppError("This payment has already been used for a booking.", 409);
+
+  // 2. Trusted price & slot validation
   const venue = await Venue.findById(venueId);
   if (!venue) throw new AppError("Venue not found", 404);
-  if (venue.status !== "approved") throw new AppError("Venue is not currently available", 400);
-  if (numberOfGuests > venue.capacity) throw new AppError(`Maximum capacity is ${venue.capacity}`, 400);
 
-  // 2. Enterprise Security: Recalculate Price (Never trust frontend totals)
-  const hoursBooked = Math.ceil((end - start) / (1000 * 60 * 60));
-  let calculatedBasePrice = hoursBooked * venue.pricePerHour;
-  
-  let calculatedAddonsPrice = 0;
-  selectedAddons.forEach((addon) => {
-    calculatedAddonsPrice += addon.perPerson ? addon.price * numberOfGuests : addon.price;
-  });
+  const quote = quoteBooking({ venue, startTime, endTime, numberOfGuests, addons: selectedAddons });
 
-  const exactTotalPrice = calculatedBasePrice + calculatedAddonsPrice;
-  if (Math.abs(exactTotalPrice - frontendPrice) > 1) { // Allowing 1 dollar/cent floating point tolerance
-    logger.warn(`Price manipulation attempt by User ${customerId}`);
+  if (frontendPrice !== undefined && Math.abs(quote.totalPrice - frontendPrice) > 1) {
+    logger.warn({ message: "Booking price mismatch", customerId: customerId.toString() });
     throw new AppError("Price mismatch detected. Booking rejected.", 400);
   }
 
-  // 3. Collision Detection
-  const overlappingBooking = await Booking.findOne({
-    venue: venueId,
-    status: { $in: ["booked", "pending_payment", "approved", "completed"] },
-    $and: [{ startTime: { $lt: end } }, { endTime: { $gt: start } }],
-  });
-
-  if (overlappingBooking) {
-    throw new AppError("The venue is already booked during this time slot", 409);
-  }
-
-  // 4. Verify Stripe Payment
-  const finalPaymentIntentId = paymentIntentId || (paymentDetails && paymentDetails.paymentIntentId);
-  if (!finalPaymentIntentId) throw new AppError("Payment intent ID is missing", 400);
-
+  // 3. Verify the Stripe payment belongs to exactly this booking
   const paymentIntent = await getStripe().paymentIntents.retrieve(finalPaymentIntentId);
-  if (paymentIntent.status !== "succeeded") {
-    throw new AppError("Payment has not been successfully completed", 400);
-  }
+  assertPaymentMatchesBooking(paymentIntent, { customerId, venueId, quote });
 
-  // 5. Database Transaction (ACID Compliance)
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+  // 4. Collision check + insert
+  // NOTE: check-then-insert still has a small race window between concurrent requests.
+  // It is closed properly by the slot-hold redesign (pending_payment hold before payment).
   try {
-    const newBooking = await Booking.create(
-      [{
-        ...bookingData,
-        customer: customerId,
-        startTime: start,
-        endTime: end,
-        totalPrice: exactTotalPrice, // Use our trusted math
-        paymentDetails: {
-          paymentIntentId: paymentIntent.id,
-          amountReceived: paymentIntent.amount_received,
-          paymentMethod: paymentIntent.payment_method,
-          status: paymentIntent.status,
-        },
-        status: "booked",
-      }],
-      { session }
-    );
+    const overlapping = await Booking.findOne({
+      venue: venueId,
+      status: { $in: ACTIVE_BOOKING_STATUSES },
+      startTime: { $lt: quote.end },
+      endTime: { $gt: quote.start },
+    });
 
-    await session.commitTransaction();
-    session.endSession();
+    if (overlapping) {
+      throw new AppError("The venue is already booked during this time slot", 409);
+    }
 
-    return newBooking[0];
+    return await Booking.create({
+      customer: customerId,
+      venue: venueId,
+      startTime: quote.start,
+      endTime: quote.end,
+      numberOfGuests,
+      eventType,
+      specialRequirements,
+      contactName,
+      phoneNumber,
+      selectedAddons: quote.selectedAddons,
+      totalPrice: quote.totalPrice,
+      paymentDetails: {
+        provider: "stripe",
+        transactionId: paymentIntent.id,
+        amountReceived: paymentIntent.amount_received,
+        currency: paymentIntent.currency,
+        status: paymentIntent.status,
+      },
+      status: "booked",
+    });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    logger.error("Booking transaction failed:", error);
-    
-    // In a fully scaled enterprise app, you would trigger a Stripe refund web-hook here
-    throw new AppError("Critical database failure during booking. Please contact support.", 500);
+    // Duplicate transactionId means a concurrent request already booked with this payment
+    if (error.code === 11000) {
+      throw new AppError("This payment has already been used for a booking.", 409);
+    }
+    await refundPayment(paymentIntent.id, error.message);
+    if (error.isOperational) {
+      throw new AppError(`${error.message}. Your payment has been refunded.`, error.statusCode);
+    }
+    logger.error({ message: "Booking creation failed", error: error.message });
+    throw new AppError("We could not complete your booking. Your payment has been refunded.", 500);
   }
 };
 
@@ -163,11 +188,48 @@ const getMonthlyEarningsForOwner = async (ownerId) => {
 /* ========================
    STATUS MODIFICATIONS
 ======================== */
-const modifyBookingStatus = async (bookingId, newStatus) => {
-  const booking = await Booking.findById(bookingId);
+const findBookingWithVenue = async (bookingId) => {
+  const booking = await Booking.findById(bookingId).populate("venue", "owner");
   if (!booking) throw new AppError("Booking not found", 404);
+  return booking;
+};
 
-  booking.status = newStatus;
+const isVenueOwner = (booking, userId) =>
+  booking.venue?.owner && booking.venue.owner.toString() === userId.toString();
+
+// Only the owner of the booked venue can approve, and only a paid booking
+const approveBooking = async (bookingId, user) => {
+  const booking = await findBookingWithVenue(bookingId);
+
+  if (!isVenueOwner(booking, user._id)) {
+    throw new AppError("You do not have permission to modify this booking.", 403);
+  }
+  if (booking.status !== "booked") {
+    throw new AppError(`A ${booking.status} booking cannot be approved`, 400);
+  }
+
+  booking.status = "approved";
+  await booking.save();
+  return booking;
+};
+
+// The customer, the venue owner, or an admin can cancel an upcoming booking
+const cancelBooking = async (bookingId, user) => {
+  const booking = await findBookingWithVenue(bookingId);
+
+  const isCustomer = booking.customer.toString() === user._id.toString();
+  const isAdmin = user.role === "Admin";
+  if (!isCustomer && !isAdmin && !isVenueOwner(booking, user._id)) {
+    throw new AppError("You do not have permission to modify this booking.", 403);
+  }
+  if (!["pending_payment", "booked", "approved"].includes(booking.status)) {
+    throw new AppError(`A ${booking.status} booking cannot be cancelled`, 400);
+  }
+  if (!isAdmin && booking.startTime.getTime() <= Date.now()) {
+    throw new AppError("Past or ongoing bookings cannot be cancelled", 400);
+  }
+
+  booking.status = "cancelled";
   await booking.save();
   return booking;
 };
@@ -197,6 +259,7 @@ const getGlobalTotalBookings = async () => {
 
 const getTopVenuesByBooking = async () => {
   return await Booking.aggregate([
+    { $match: { status: { $in: ["booked", "approved", "completed"] } } },
     { $group: { _id: "$venue", bookingCount: { $sum: 1 } } },
     { $sort: { bookingCount: -1 } },
     { $limit: 5 },
@@ -209,6 +272,7 @@ const getTopVenuesByBooking = async () => {
       },
     },
     { $unwind: "$venueDetails" },
+    { $match: { "venueDetails.status": "approved", "venueDetails.isDeleted": false } },
     {
       $project: {
         _id: 0,
@@ -227,7 +291,8 @@ module.exports = {
   createBooking,
   getBookingsForOwner,
   getMonthlyEarningsForOwner,
-  modifyBookingStatus,
+  approveBooking,
+  cancelBooking,
   getCustomerBookings,
   getCustomerBookingCount,
   getTotalBookingsForOwner,

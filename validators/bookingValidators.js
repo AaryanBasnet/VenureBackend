@@ -23,14 +23,10 @@ const createBookingSchema = z.object({
   contactName: z.string().min(2, "Contact name is required"),
   phoneNumber: z.string().min(7, "Valid phone number is required"),
   
+  // Only the add-on id is trusted; name/price come from the server catalog
   selectedAddons: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      price: z.number().nonnegative(),
-      perPerson: z.boolean(),
-    })
-  ).optional(),
+    z.union([z.string(), z.object({ id: z.string() }).passthrough()])
+  ).max(20).optional(),
   
   totalPrice: z.number().nonnegative("Total price cannot be negative"),
   

@@ -53,6 +53,10 @@ const errorHandler = (err, req, res, next) => {
   // Create a copy of the error to avoid mutating the original
   let error = Object.assign(err);
 
+  // --- BODY PARSER ERRORS ---
+  if (error.type === "entity.parse.failed") error = new AppError("Malformed JSON body", 400);
+  if (error.type === "entity.too.large") error = new AppError("Request body is too large", 413);
+
   // --- MONGOOSE ERRORS ---
   if (error.name === "CastError") error = handleCastErrorDB(error);
   if (error.code === 11000) error = handleDuplicateFieldsDB(error);

@@ -1,10 +1,16 @@
-﻿const User = require("../model/user");
+const User = require("../model/user");
 const RefreshToken = require("../model/refreshToken");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
+
+// A second refresh with the same token inside this window is treated as a
+// concurrent refresh (e.g. two tabs), not as a stolen-token replay.
+const REFRESH_REUSE_GRACE_MS = 30 * 1000;
+const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SOCKET_TOKEN_AUDIENCE = "socket";
 
 /* ================= TOKEN UTILS ================= */
 
@@ -18,14 +24,30 @@ const generateAccessToken = (user) => {
 
 const generateRefreshToken = (user) => {
   return jwt.sign(
-    { id: user._id },
+    { id: user._id, jti: crypto.randomUUID() },
     process.env.REFRESH_TOKEN_SECRET,
     { expiresIn: "7d" }
   );
 };
 
+// Short-lived token the browser passes in the Socket.io handshake. Needed because the
+// socket connects cross-site, where the HTTP-only cookie may not be sent.
+const generateSocketToken = (user) => {
+  return jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+    expiresIn: "60s",
+    audience: SOCKET_TOKEN_AUDIENCE,
+  });
+};
+
+const verifySocketToken = (token) =>
+  jwt.verify(token, process.env.JWT_SECRET, { audience: SOCKET_TOKEN_AUDIENCE });
+
 // Helper to hash tokens before saving to DB
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
+
+const findActiveUser = (query) => User.findOne({ ...query, isDeleted: { $ne: true } });
+
+const revokeAllSessions = (userId) => RefreshToken.deleteMany({ userId });
 
 /* ================= REGISTER ================= */
 
@@ -41,7 +63,8 @@ const register = async ({ name, email, phone, role, password }) => {
     name,
     email,
     phone,
-    role,
+    // Defence in depth: the validator already restricts this, never allow Admin here
+    role: role === "VenueOwner" ? "VenueOwner" : "Customer",
     password: hashed,
   });
 
@@ -54,8 +77,7 @@ const register = async ({ name, email, phone, role, password }) => {
 const login = async (email, password, userAgent, ip) => {
   email = email.toLowerCase().trim();
 
-  // ✨ Fix: Explicitly request the password field for validation
-  const user = await User.findOne({ email }).select("+password");
+  const user = await findActiveUser({ email }).select("+password");
   if (!user) throw new AppError("Invalid credentials", 401);
 
   const match = await bcrypt.compare(password, user.password);
@@ -64,13 +86,12 @@ const login = async (email, password, userAgent, ip) => {
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
-  // ✨ Save session to the dedicated RefreshToken collection
   await RefreshToken.create({
     userId: user._id,
     token: hashToken(refreshToken),
     userAgent,
     ipAddress: ip,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
   });
 
   return {
@@ -92,47 +113,61 @@ const login = async (email, password, userAgent, ip) => {
 const refreshAccessToken = async (token, userAgent, ip) => {
   if (!token) throw new AppError("No refresh token provided", 401);
 
-  // 1. Verify the JWT signature
-  const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
-  
-  // 2. Find the token in our database
-  const hashedToken = hashToken(token);
-  const savedToken = await RefreshToken.findOne({ token: hashedToken });
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+  } catch {
+    throw new AppError("Invalid session. Please log in again.", 401);
+  }
 
-  // 🚨 BREACH DETECTION LOGIC
+  const savedToken = await RefreshToken.findOne({ token: hashToken(token) });
+
   if (!savedToken) {
-    // The token signature is valid, but it's not in the DB. 
-    // It was likely stolen, used, and rotated. Nuke all user sessions.
-    logger.warn(`Security Alert: Replay attack detected for user ${decoded.id}`);
-    await RefreshToken.deleteMany({ userId: decoded.id });
-    throw new AppError("Security alert: Invalid session. Please log in again.", 403);
+    // Valid signature but unknown token: it was already rotated long ago or revoked.
+    logger.warn({ message: "Refresh token replay detected", userId: decoded.id });
+    await revokeAllSessions(decoded.id);
+    throw new AppError("Invalid session. Please log in again.", 401);
   }
 
-  if (savedToken.isUsed || savedToken.isRevoked) {
-    logger.warn(`Security Alert: Attempted use of revoked/used token for user ${decoded.id}`);
-    await RefreshToken.deleteMany({ userId: decoded.id });
-    throw new AppError("Security alert: Invalid session. Please log in again.", 403);
+  if (savedToken.isRevoked) {
+    await revokeAllSessions(decoded.id);
+    throw new AppError("Invalid session. Please log in again.", 401);
   }
 
-  // 3. Token is valid. Get user.
-  const user = await User.findById(decoded.id);
-  if (!user) throw new AppError("User not found", 404);
+  if (savedToken.isUsed) {
+    const usedAgoMs = Date.now() - savedToken.updatedAt.getTime();
+    if (usedAgoMs <= REFRESH_REUSE_GRACE_MS) {
+      // Another tab refreshed a moment ago; its new cookies are already in the browser.
+      throw new AppError("Session was just refreshed", 409);
+    }
+    logger.warn({ message: "Reuse of rotated refresh token", userId: decoded.id });
+    await revokeAllSessions(decoded.id);
+    throw new AppError("Invalid session. Please log in again.", 401);
+  }
 
-  // 4. Mark old token as used (Rotation)
-  savedToken.isUsed = true;
-  await savedToken.save();
+  const user = await findActiveUser({ _id: decoded.id });
+  if (!user) {
+    await revokeAllSessions(decoded.id);
+    throw new AppError("Invalid session. Please log in again.", 401);
+  }
 
-  // 5. Issue brand new token pair
+  // Atomically claim the token so two simultaneous requests can't both rotate it
+  const claimed = await RefreshToken.findOneAndUpdate(
+    { _id: savedToken._id, isUsed: false },
+    { isUsed: true },
+    { new: true }
+  );
+  if (!claimed) throw new AppError("Session was just refreshed", 409);
+
   const newAccessToken = generateAccessToken(user);
   const newRefreshToken = generateRefreshToken(user);
 
-  // 6. Save new refresh token to DB
   await RefreshToken.create({
     userId: user._id,
     token: hashToken(newRefreshToken),
     userAgent,
     ipAddress: ip,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
   });
 
   return { newAccessToken, newRefreshToken };
@@ -142,10 +177,7 @@ const refreshAccessToken = async (token, userAgent, ip) => {
 
 const logout = async (token) => {
   if (!token) return;
-  const hashedToken = hashToken(token);
-  
-  // Delete the token so it can never be used again
-  await RefreshToken.findOneAndDelete({ token: hashedToken });
+  await RefreshToken.findOneAndDelete({ token: hashToken(token) });
 };
 
 module.exports = {
@@ -153,4 +185,7 @@ module.exports = {
   login,
   refreshAccessToken,
   logout,
+  revokeAllSessions,
+  generateSocketToken,
+  verifySocketToken,
 };

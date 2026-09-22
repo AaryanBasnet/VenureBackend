@@ -35,6 +35,12 @@ const getFingerprint = (req) => {
   };
 };
 
+const clearAuthCookies = (res) => {
+  const clearOpts = { httpOnly: true, secure: isProduction, sameSite: isProduction ? "none" : "lax" };
+  res.clearCookie("accessToken", clearOpts);
+  res.clearCookie("refreshToken", clearOpts);
+};
+
 /* ================= REGISTER ================= */
 
 const registerUser = asyncHandler(async (req, res) => {
@@ -83,11 +89,15 @@ const refreshToken = asyncHandler(async (req, res) => {
   }
 
   // 1. Execute the rotation and get the brand-new pair
-  const { newAccessToken, newRefreshToken } = await authService.refreshAccessToken(
-    oldRefreshToken,
-    userAgent,
-    ip
-  );
+  let tokens;
+  try {
+    tokens = await authService.refreshAccessToken(oldRefreshToken, userAgent, ip);
+  } catch (err) {
+    // A dead session shouldn't leave stale cookies; a 409 (concurrent refresh) keeps them
+    if (err.statusCode === 401) clearAuthCookies(res);
+    throw err;
+  }
+  const { newAccessToken, newRefreshToken } = tokens;
 
   // 2. Rotate both cookies with fresh tokens
   res.cookie("accessToken", newAccessToken, getAccessCookieOptions());
@@ -107,9 +117,7 @@ const logoutUser = asyncHandler(async (req, res) => {
   }
 
   // 2. Instruct the browser to instantly delete both cookies
-  const clearOpts = { httpOnly: true, secure: isProduction, sameSite: isProduction ? "none" : "lax" };
-  res.clearCookie("accessToken", clearOpts);
-  res.clearCookie("refreshToken", clearOpts);
+  clearAuthCookies(res);
 
   res.status(200).json({
     success: true,
@@ -127,7 +135,18 @@ const getMe = asyncHandler(async (req, res) => {
   });
 });
 
+/* ================= SOCKET TOKEN ================= */
+
+// Short-lived token for the Socket.io handshake (see authService.generateSocketToken)
+const getSocketToken = asyncHandler(async (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: { token: authService.generateSocketToken(req.user) },
+  });
+});
+
 module.exports = {
+  getSocketToken,
   registerUser,
   loginUser,
   refreshToken,

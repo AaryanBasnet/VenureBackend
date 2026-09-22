@@ -1,20 +1,24 @@
-// middleware/validateMiddleware.js
 const AppError = require("../utils/AppError");
 
-// Added target parameter (defaults to "body")
 const validate = (schema, target = "body") => (req, res, next) => {
-  const result = schema.safeParse(req[target]);
+  const result = schema.safeParse(req[target] ?? {});
 
   if (!result.success) {
-    const errorMessages = result.error.errors
-      .map((err) => `${err.path.join(".")}: ${err.message}`)
+    const errorMessages = result.error.issues
+      .map((issue) => (issue.path.length ? `${issue.path.join(".")}: ${issue.message}` : issue.message))
       .join(", ");
-      
+
     return next(new AppError(`Validation Error - ${errorMessages}`, 400));
   }
 
-  // Assign the sanitized data back to the targeted request object
-  req[target] = result.data; 
+  // Express 5 exposes req.query as a getter, so plain assignment is silently ignored.
+  // Shadow it on the request instance so handlers receive the parsed/coerced data.
+  Object.defineProperty(req, target, {
+    value: result.data,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
   next();
 };
 

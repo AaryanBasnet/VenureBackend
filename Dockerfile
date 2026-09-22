@@ -1,22 +1,19 @@
 FROM node:22-alpine
 
-# Set working directory
 WORKDIR /app
 
-# Install dependencies (use cached layer)
-COPY package*.json ./
-RUN npm install --production
-
-# Copy application code
-COPY . .
-
-# Set production environment
 ENV NODE_ENV=production
 
-# Expose application port
+# Install production dependencies only, exactly as locked
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Copy application code (.dockerignore keeps secrets, tests and uploads out)
+COPY --chown=node:node . .
+
+# Never run the app as root
+USER node
+
 EXPOSE 5051
 
-# Start the server
 CMD ["node", "server.js"]
-
-

@@ -1,53 +1,36 @@
-﻿const Stripe = require("stripe");
 const crypto = require("crypto"); // Needed for eSewa HMAC signatures
 const Booking = require("../model/booking");
 const Venue = require("../model/venue");
 const AppError = require("../utils/AppError");
+const { getStripe } = require("../utils/stripe");
+const { quoteBooking, nprToUsdCents } = require("./pricingService");
 
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-
-// Centralized price calculation (Never trust the frontend!)
-const calculateExactPrice = (venue, start, end, guests, addons = []) => {
-  const hoursBooked = Math.ceil((end - start) / (1000 * 60 * 60));
-  let basePrice = hoursBooked * venue.pricePerHour;
-
-  let addonsPrice = 0;
-  addons.forEach((addon) => {
-    addonsPrice += addon.perPerson ? addon.price * guests : addon.price;
-  });
-
-  return basePrice + addonsPrice; // Assuming NPR is your base currency
-};
+const ACTIVE_BOOKING_STATUSES = ["pending_payment", "booked", "approved", "completed"];
 
 const initiatePayment = async (payload, userId) => {
-  const { venueId, startTime, endTime, numberOfGuests, selectedAddons, provider } = payload;
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+  const { venueId, startTime, endTime, numberOfGuests, selectedAddons = [], provider } = payload;
 
-  // 1. Fetch Venue & Calculate Secure Price
+  // 1. Fetch venue & build the trusted quote (validates time range, capacity, add-ons)
   const venue = await Venue.findById(venueId);
   if (!venue) throw new AppError("Venue not found", 404);
 
-  const exactAmountNPR = calculateExactPrice(venue, start, end, numberOfGuests, selectedAddons);
+  const quote = quoteBooking({ venue, startTime, endTime, numberOfGuests, addons: selectedAddons });
 
-  // 2. Collision Detection
+  // 2. Collision detection
   const conflict = await Booking.findOne({
     venue: venueId,
-    status: { $in: ["booked", "approved", "completed"] },
-    $and: [{ startTime: { $lt: end } }, { endTime: { $gt: start } }],
+    status: { $in: ACTIVE_BOOKING_STATUSES },
+    startTime: { $lt: quote.end },
+    endTime: { $gt: quote.start },
   });
+  if (conflict) throw new AppError("This slot is already booked.", 409);
 
-  if (conflict) {
-    throw new AppError("This slot is already booked.", 409);
-  }
-
-  // 3. GATEWAY ROUTER (Strategy Pattern)
+  // 3. Gateway router
   if (provider === "stripe") {
-    return await processStripePayment(exactAmountNPR, payload);
-  } 
-  
+    return processStripePayment(quote, { userId, venueId, numberOfGuests });
+  }
   if (provider === "esewa") {
-    return await processEsewaPayment(exactAmountNPR, payload);
+    return processEsewaPayment(quote.totalPrice);
   }
 
   throw new AppError("Unsupported payment provider", 400);
@@ -56,18 +39,19 @@ const initiatePayment = async (payload, userId) => {
 /* =========================================================================
    STRIPE IMPLEMENTATION
 ========================================================================= */
-const processStripePayment = async (amountNPR, metadata) => {
-  // Configurable exchange rate (in a real app, fetch this from an API or DB)
-  const EXCHANGE_RATE = process.env.USD_NPR_RATE || 132; 
-  const amountUsdCents = Math.round((amountNPR / EXCHANGE_RATE) * 100);
-
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: amountUsdCents,
+const processStripePayment = async (quote, { userId, venueId, numberOfGuests }) => {
+  const paymentIntent = await getStripe().paymentIntents.create({
+    amount: nprToUsdCents(quote.totalPrice),
     currency: "usd",
+    // Everything the booking step needs to prove this payment was made for this exact booking
     metadata: {
-      venueId: metadata.venueId,
-      startTime: metadata.startTime,
-      endTime: metadata.endTime,
+      userId: userId.toString(),
+      venueId: venueId.toString(),
+      startTime: quote.start.toISOString(),
+      endTime: quote.end.toISOString(),
+      numberOfGuests: String(numberOfGuests),
+      addonIds: quote.selectedAddons.map((a) => a.id).join(","),
+      amountNPR: String(quote.totalPrice),
     },
   });
 
@@ -75,20 +59,22 @@ const processStripePayment = async (amountNPR, metadata) => {
     provider: "stripe",
     clientSecret: paymentIntent.client_secret,
     transactionId: paymentIntent.id,
-    amount: amountNPR,
+    amount: quote.totalPrice,
   };
 };
 
 /* =========================================================================
    ESEWA IMPLEMENTATION (v2 ePay)
+   NOTE: there is no verification callback yet, so eSewa payments cannot create bookings.
 ========================================================================= */
-const processEsewaPayment = async (amountNPR, metadata) => {
-  // eSewa requires a unique transaction UUID for every request
-  const transactionUuid = `TXN-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-  
+const processEsewaPayment = async (amountNPR) => {
+  if (!process.env.ESEWA_SECRET_KEY || !process.env.ESEWA_MERCHANT_CODE) {
+    throw new AppError("eSewa payments are not available yet", 400);
+  }
+
+  const transactionUuid = `TXN-${Date.now()}-${crypto.randomInt(10000)}`;
   const message = `total_amount=${amountNPR},transaction_uuid=${transactionUuid},product_code=${process.env.ESEWA_MERCHANT_CODE}`;
-  
-  // eSewa v2 uses HMAC SHA256 Signature
+
   const signature = crypto
     .createHmac("sha256", process.env.ESEWA_SECRET_KEY)
     .update(message)
@@ -96,7 +82,6 @@ const processEsewaPayment = async (amountNPR, metadata) => {
 
   return {
     provider: "esewa",
-    // We return the payload the frontend needs to submit the eSewa form
     formData: {
       amount: amountNPR,
       tax_amount: "0",
@@ -108,9 +93,9 @@ const processEsewaPayment = async (amountNPR, metadata) => {
       success_url: `${process.env.FRONTEND_URL}/payment/esewa/success`,
       failure_url: `${process.env.FRONTEND_URL}/payment/esewa/failure`,
       signed_field_names: "total_amount,transaction_uuid,product_code",
-      signature: signature,
-    }
+      signature,
+    },
   };
 };
 
-module.exports = { initiatePayment, calculateExactPrice };
+module.exports = { initiatePayment, ACTIVE_BOOKING_STATUSES };
