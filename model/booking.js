@@ -69,6 +69,9 @@ const bookingSchema = new mongoose.Schema(
       enum: ["pending_payment", "booked", "approved", "cancelled", "completed"],
       default: "pending_payment", // Added pending to handle Stripe flow safely
     },
+    // Set only while a slot is being claimed. MongoDB's TTL monitor deletes the
+    // document if the server dies mid-claim, so a crash can't block a slot forever.
+    holdExpiresAt: Date,
   },
   { timestamps: true }
 );
@@ -79,6 +82,7 @@ const bookingSchema = new mongoose.Schema(
 ========================================================================= */
 bookingSchema.index({ venue: 1, startTime: 1, endTime: 1 });
 bookingSchema.index({ customer: 1 }); // Fast lookup for user dashboards
+bookingSchema.index({ holdExpiresAt: 1 }, { expireAfterSeconds: 0 }); // Only affects documents that have the field
 
 // A payment can back at most one booking (blocks PaymentIntent reuse)
 bookingSchema.index(

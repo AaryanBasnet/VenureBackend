@@ -6,6 +6,9 @@ const { getStripe } = require("../utils/stripe");
 const { quoteBooking, nprToUsdCents } = require("./pricingService");
 const { ACTIVE_BOOKING_STATUSES } = require("./paymentService");
 
+// How long an unfinished slot claim may live before MongoDB removes it
+const CLAIM_TTL_MS = 2 * 60 * 1000;
+
 const sameInstant = (a, b) => new Date(a).getTime() === new Date(b).getTime();
 
 /**
@@ -87,22 +90,15 @@ const createBooking = async (bookingData, customerId) => {
   const paymentIntent = await getStripe().paymentIntents.retrieve(finalPaymentIntentId);
   assertPaymentMatchesBooking(paymentIntent, { customerId, venueId, quote });
 
-  // 4. Collision check + insert
-  // NOTE: check-then-insert still has a small race window between concurrent requests.
-  // It is closed properly by the slot-hold redesign (pending_payment hold before payment).
+  // 4. Claim the slot, then verify nobody else holds it.
+  // A plain "check, then insert" lets two simultaneous requests both pass the check.
+  // Instead we insert a claim first and only then look for other bookings: whichever
+  // request inserts second always sees the first, so two can never both succeed.
+  // (If both claim at the same instant they can both lose; the customers are refunded
+  // and can retry. Losing safely beats double-booking.)
+  let claim;
   try {
-    const overlapping = await Booking.findOne({
-      venue: venueId,
-      status: { $in: ACTIVE_BOOKING_STATUSES },
-      startTime: { $lt: quote.end },
-      endTime: { $gt: quote.start },
-    });
-
-    if (overlapping) {
-      throw new AppError("The venue is already booked during this time slot", 409);
-    }
-
-    return await Booking.create({
+    claim = await Booking.create({
       customer: customerId,
       venue: venueId,
       startTime: quote.start,
@@ -121,9 +117,29 @@ const createBooking = async (bookingData, customerId) => {
         currency: paymentIntent.currency,
         status: paymentIntent.status,
       },
-      status: "booked",
+      status: "pending_payment",
+      holdExpiresAt: new Date(Date.now() + CLAIM_TTL_MS),
     });
+
+    const conflict = await Booking.exists({
+      _id: { $ne: claim._id },
+      venue: venueId,
+      status: { $in: ACTIVE_BOOKING_STATUSES },
+      startTime: { $lt: quote.end },
+      endTime: { $gt: quote.start },
+    });
+    if (conflict) {
+      throw new AppError("The venue is already booked during this time slot", 409);
+    }
+
+    return await Booking.findByIdAndUpdate(
+      claim._id,
+      { status: "booked", $unset: { holdExpiresAt: 1 } },
+      { new: true }
+    );
   } catch (error) {
+    if (claim) await Booking.deleteOne({ _id: claim._id, status: "pending_payment" });
+
     // Duplicate transactionId means a concurrent request already booked with this payment
     if (error.code === 11000) {
       throw new AppError("This payment has already been used for a booking.", 409);
