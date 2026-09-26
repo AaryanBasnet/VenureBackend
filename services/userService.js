@@ -1,7 +1,10 @@
 ﻿const User = require("../model/user");
+const Booking = require("../model/booking");
+const { revokeAllSessions } = require("./authService");
 const AppError = require("../utils/AppError");
 const { cloudinary } = require("../middleware/uploadMiddleware");
 const logger = require("../utils/logger");
+const escapeRegex = require("../utils/escapeRegex");
 
 const getUserProfile = async (userId) => {
   const user = await User.findById(userId); 
@@ -45,7 +48,8 @@ const updateUserProfile = async (userId, updateData, file) => {
    ADMIN USER MANAGEMENT
 ========================================================================= */
 const getPaginatedUsers = async (filters) => {
-  const { page, limit, search, role } = filters;
+  const { page, limit, role } = filters;
+  const search = filters.search ? escapeRegex(filters.search) : "";
   const skip = (page - 1) * limit;
 
   // Build the query: Exclude soft-deleted users
@@ -104,6 +108,9 @@ const softDeleteUser = async (userId) => {
   // ENTERPRISE FIX: Soft Delete
   user.isDeleted = true;
   await user.save();
+
+  // Deactivation ends every active session immediately
+  await revokeAllSessions(user._id);
 };
 
 const getTotalCustomersCount = async () => {

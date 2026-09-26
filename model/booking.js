@@ -66,7 +66,7 @@ const bookingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending_payment", "booked", "cancelled", "completed"],
+      enum: ["pending_payment", "booked", "approved", "cancelled", "completed"],
       default: "pending_payment", // Added pending to handle Stripe flow safely
     },
   },
@@ -79,5 +79,11 @@ const bookingSchema = new mongoose.Schema(
 ========================================================================= */
 bookingSchema.index({ venue: 1, startTime: 1, endTime: 1 });
 bookingSchema.index({ customer: 1 }); // Fast lookup for user dashboards
+
+// A payment can back at most one booking (blocks PaymentIntent reuse)
+bookingSchema.index(
+  { "paymentDetails.transactionId": 1 },
+  { unique: true, partialFilterExpression: { "paymentDetails.transactionId": { $type: "string" } } }
+);
 
 module.exports = mongoose.models.Booking || mongoose.model("Booking", bookingSchema);

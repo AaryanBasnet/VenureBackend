@@ -52,15 +52,17 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
+  resetPasswordToken: { type: String, select: false },
+  resetPasswordExpire: { type: Date, select: false },
+  // Failed attempts against the current reset code; the code is burned after too many
+  resetPasswordAttempts: { type: Number, default: 0, select: false },
 });
 
 /* =========================================================================
    SECURITY LAYER: Fixes raw token leak risk in the reset code helper
 ========================================================================= */
 userSchema.methods.getResetPasswordCode = function () {
-  const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+  const code = crypto.randomInt(100000, 1000000).toString(); // 6-digit code, CSPRNG
   
   this.resetPasswordToken = crypto
     .createHash("sha256")
@@ -68,6 +70,7 @@ userSchema.methods.getResetPasswordCode = function () {
     .digest("hex");
     
   this.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 minutes expiry
+  this.resetPasswordAttempts = 0;
   
   return code; 
 };

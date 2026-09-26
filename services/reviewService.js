@@ -41,9 +41,9 @@ const addReview = async (venueId, userId, payload) => {
    FETCH REVIEWS
 ======================== */
 const getVenueReviews = async (venueId) => {
-  // Fetch from the new decoupled Review collection, not the Venue document
+  // Public endpoint: never expose reviewer emails
   return await Review.find({ venue: venueId })
-    .populate("user", "name email avatar")
+    .populate("user", "name avatar")
     .sort("-createdAt"); // Newest first
 };
 
@@ -54,7 +54,7 @@ const getReviewsForOwnerVenues = async (ownerId) => {
 
   // 2. Find all reviews linked to those specific venues
   const reviews = await Review.find({ venue: { $in: venueIds } })
-    .populate("user", "name email avatar")
+    .populate("user", "name avatar")
     .populate("venue", "venueName")
     .sort("-createdAt");
 

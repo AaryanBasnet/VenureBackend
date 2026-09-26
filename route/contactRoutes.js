@@ -5,14 +5,16 @@ const contactController = require("../controller/contactController");
 const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
 const validate = require("../middleware/validate");
 const { submitContactSchema } = require("../validators/contactValidators");
+const { contactLimiter } = require("../middleware/rateLimiters");
 
 /* =========================================================================
    PUBLIC ROUTES
 ========================================================================= */
 // Users do not need to be logged in to contact you
 router.post(
-  "/", 
-  validate(submitContactSchema, "body"), 
+  "/",
+  contactLimiter,
+  validate(submitContactSchema, "body"),
   contactController.submitContactForm
 );
 

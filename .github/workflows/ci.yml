@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Install, import check, case check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Require-path case check (Linux is case sensitive)
+        run: npm run check:case
+      - name: App boots (catches broken imports and bad wiring)
+        run: node -r ./test/jest.env.js -e "require('./app'); console.log('app loaded'); process.exit(0)"
+
+  test:
+    name: Tests (informational until the suite is rewritten)
+    runs-on: ubuntu-latest
+    # Most tests still target the pre-rewrite API. Remove continue-on-error
+    # and make this job required once they are updated.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Cache MongoDB binary used by mongodb-memory-server
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm test -- --silent

@@ -7,26 +7,41 @@ const passwordController = require("../controller/passwordController");
 // Middlewares
 const validate = require("../middleware/validate");
 const { protectRoute } = require("../middleware/authMiddleware");
-const { forgotPasswordLimiter } = require("../middleware/rateLimiters");
+const {
+  forgotPasswordLimiter,
+  resetCodeLimiter,
+  verifyPasswordLimiter,
+} = require("../middleware/rateLimiters");
 
 // Validations
-const { forgotPasswordSchema, resetPasswordSchema } = require("../validators/authValidators");
+const {
+  forgotPasswordSchema,
+  verifyResetCodeSchema,
+  resetPasswordSchema,
+  verifyPasswordSchema,
+} = require("../validators/authValidators");
 
 /* ========================
    PUBLIC PASSWORD RECOVERY
 ======================== */
 router.post(
-  "/forgot-password", 
-  forgotPasswordLimiter, 
-  validate(forgotPasswordSchema), 
+  "/forgot-password",
+  forgotPasswordLimiter,
+  validate(forgotPasswordSchema),
   passwordController.forgotPassword
 );
 
-router.post("/verify-code", passwordController.verifyResetCode);
+router.post(
+  "/verify-code",
+  resetCodeLimiter,
+  validate(verifyResetCodeSchema),
+  passwordController.verifyResetCode
+);
 
 router.post(
-  "/reset-password", 
-  validate(resetPasswordSchema), 
+  "/reset-password",
+  resetCodeLimiter,
+  validate(resetPasswordSchema),
   passwordController.resetPasswordWithCode
 );
 
@@ -35,8 +50,10 @@ router.post(
 ======================== */
 // Requires the user to be actively logged in to verify their current password
 router.post(
-  "/verify-password", 
-  protectRoute, 
+  "/verify-password",
+  protectRoute,
+  verifyPasswordLimiter,
+  validate(verifyPasswordSchema),
   passwordController.verifyPassword
 );
 

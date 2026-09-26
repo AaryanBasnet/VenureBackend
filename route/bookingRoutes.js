@@ -29,7 +29,8 @@ router.post(
 
 router.get("/my-bookings", authorizeRoles("Customer"), bookingController.getBookingsForCustomer);
 router.get("/my-count", authorizeRoles("Customer"), bookingController.getCustomerBookingCount);
-router.put("/:id/cancel", authorizeRoles("Customer", "Admin"), bookingController.cancelBooking);
+// Ownership (customer / venue owner / admin) is enforced in the service
+router.put("/:id/cancel", authorizeRoles("Customer", "VenueOwner", "Admin"), bookingController.cancelBooking);
 
 /* ========================
    VENUE OWNER ROUTES

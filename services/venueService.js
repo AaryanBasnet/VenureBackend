@@ -3,6 +3,16 @@ const Notification = require("../model/notification"); // Standardized capitaliz
 const AppError = require("../utils/AppError");
 const { cloudinary } = require("../middleware/uploadMiddleware");
 const logger = require("../utils/logger");
+const escapeRegex = require("../utils/escapeRegex");
+
+const VENUE_STATUSES = ["pending", "approved", "rejected"];
+const MAX_PAGE_SIZE = 50;
+
+const toPaging = (filters) => {
+  const page = Math.max(parseInt(filters.page) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(filters.limit) || 10, 1), MAX_PAGE_SIZE);
+  return { page, limit, skip: (page - 1) * limit };
+};
 
 /* ========================
    FILE STORAGE ABSTRACTION
@@ -39,9 +49,13 @@ const createVenue = async (venueData, ownerId) => {
   return venue;
 };
 
-const updateVenueImages = async (venueId, files) => {
-  const venue = await Venue.findById(venueId);
-  if (!venue) throw new AppError("Venue not found", 404);
+const updateVenueImages = async (venueId, ownerId, files) => {
+  const venue = await Venue.findOne({ _id: venueId, owner: ownerId, isDeleted: false });
+  if (!venue) {
+    // Don't keep images uploaded for a venue the caller doesn't own
+    await deleteExternalImages(files.map((file) => ({ filename: file.filename || file.public_id })));
+    throw new AppError("Venue not found or unauthorized", 404);
+  }
 
   const newImages = files.map((file) => ({
     filename: file.filename || file.public_id, 
@@ -55,7 +69,12 @@ const updateVenueImages = async (venueId, files) => {
 
 const updateVenue = async (venueId, ownerId, updateData, files) => {
   const venue = await Venue.findOne({ _id: venueId, owner: ownerId, isDeleted: false });
-  if (!venue) throw new AppError("Venue not found or unauthorized", 404);
+  if (!venue) {
+    if (files?.length) {
+      await deleteExternalImages(files.map((file) => ({ filename: file.filename || file.public_id })));
+    }
+    throw new AppError("Venue not found or unauthorized", 404);
+  }
 
   // Safely format new GeoCoordinates if they were updated
   if (updateData.geoCoordinates) {
@@ -83,9 +102,7 @@ const updateVenue = async (venueId, ownerId, updateData, files) => {
 };
 
 const getVenuesByOwner = async (ownerId, filters = {}) => {
-  const page = parseInt(filters.page) || 1;
-  const limit = parseInt(filters.limit) || 10;
-  const skip = (page - 1) * limit;
+  const { page, limit, skip } = toPaging(filters);
 
   const query = { owner: ownerId, isDeleted: false };
   
@@ -120,11 +137,13 @@ const softDeleteVenue = async (venueId, userId, userRole) => {
    USER / DISCOVERY
 ======================== */
 const getApprovedVenues = async (filters) => {
-  const { search, city, lng, lat, radius, page = 1, limit = 10 } = filters;
+  const { search, city, category, lng, lat, radius } = filters;
+  const { page, limit, skip } = toPaging(filters);
   const query = { status: "approved", isDeleted: false };
 
-  if (search) query.venueName = { $regex: search, $options: "i" };
-  if (city) query["location.city"] = city;
+  if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
+  if (city) query["location.city"] = String(city);
+  if (category) query.category = category;
 
   // MAPS INTEGRATION
   if (lng && lat && radius) {
@@ -136,17 +155,38 @@ const getApprovedVenues = async (filters) => {
     };
   }
 
-  const skip = (page - 1) * limit;
   const total = await Venue.countDocuments(query);
   const venues = await Venue.find(query).skip(skip).limit(limit).lean();
 
   return { venues, total, pages: Math.ceil(total / limit) };
 };
 
+// Landing page venue-type cards: how many approved venues exist per category
+const getCategoryCounts = async () => {
+  const rows = await Venue.aggregate([
+    { $match: { status: "approved", isDeleted: false, category: { $ne: null } } },
+    { $group: { _id: "$category", count: { $sum: 1 } } },
+  ]);
+
+  return rows.reduce((counts, row) => {
+    counts[row._id] = row.count;
+    return counts;
+  }, {});
+};
+
+// Landing page "Our Finest Heritage Spaces": admin-curated picks
+const getFeaturedVenues = async (limit = 3) => {
+  return await Venue.find({ isFeatured: true, status: "approved", isDeleted: false })
+    .sort("-createdAt")
+    .limit(limit)
+    .lean();
+};
+
+// Public venue page: only approved venues, and no owner contact details
 const getVenueById = async (venueId) => {
-  const venue = await Venue.findOne({ _id: venueId, isDeleted: false })
-    .populate("owner", "name email avatar");
-    
+  const venue = await Venue.findOne({ _id: venueId, isDeleted: false, status: "approved" })
+    .populate("owner", "name avatar");
+
   if (!venue) throw new AppError("Venue not found", 404);
   return venue;
 };
@@ -156,16 +196,14 @@ const getVenueById = async (venueId) => {
    ADMIN ACTIONS
 ======================== */
 const getAllVenues = async (filters = {}) => {
-  const page = parseInt(filters.page) || 1;
-  const limit = parseInt(filters.limit) || 10;
+  const { page, limit, skip } = toPaging(filters);
   const search = filters.search || "";
   const status = filters.status;
 
   const query = { isDeleted: false };
-  if (search) query.venueName = { $regex: search, $options: "i" };
-  if (status) query.status = status;
+  if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
+  if (VENUE_STATUSES.includes(status)) query.status = status;
 
-  const skip = (page - 1) * limit;
   const total = await Venue.countDocuments(query);
   const venues = await Venue.find(query)
     .populate("owner", "name email")
@@ -182,7 +220,15 @@ const getApprovedVenueCount = async () => {
 };
 
 const updateVenueStatus = async (venueId, status, io) => {
-  const venue = await Venue.findByIdAndUpdate(venueId, { status }, { new: true }).populate("owner");
+  if (!VENUE_STATUSES.includes(status)) {
+    throw new AppError(`Status must be one of: ${VENUE_STATUSES.join(", ")}`, 400);
+  }
+
+  const venue = await Venue.findOneAndUpdate(
+    { _id: venueId, isDeleted: false },
+    { status },
+    { new: true, runValidators: true }
+  ).populate("owner", "name");
   if (!venue) throw new AppError("Venue not found", 404);
 
   if (venue.owner) {
@@ -197,6 +243,16 @@ const updateVenueStatus = async (venueId, status, io) => {
   return venue;
 };
 
+const toggleFeatured = async (venueId) => {
+  const venue = await Venue.findOne({ _id: venueId, isDeleted: false });
+  if (!venue) throw new AppError("Venue not found", 404);
+
+  venue.isFeatured = !venue.isFeatured;
+  await venue.save();
+
+  return venue;
+};
+
 // Export ALL functions to satisfy the Controller
 module.exports = {
   createVenue,
@@ -206,9 +262,12 @@ module.exports = {
   getApprovedVenueCountByOwner,
   softDeleteVenue,
   getApprovedVenues,
+  getCategoryCounts,
+  getFeaturedVenues,
   getVenueById,
   getAllVenues,
   getApprovedVenueCount,
   updateVenueStatus,
+  toggleFeatured,
   deleteExternalImages
 };

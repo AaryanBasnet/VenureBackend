@@ -14,24 +14,22 @@ const protectRoute = async (req, res, next) => {
       return next(new AppError("Not authorized, token missing", 401));
     }
 
-    // 2. Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3. Get user from DB (security check, excluding password)
-    const user = await User.findById(decoded.id).select("-password");
+    // Deactivated accounts lose access immediately, even with an unexpired token
+    const user = await User.findOne({ _id: decoded.id, isDeleted: { $ne: true } }).select("-password");
 
     if (!user) {
       return next(new AppError("User no longer exists", 401));
     }
 
-    // 4. Attach user to request
     req.user = user;
 
     next();
   } catch (err) {
-    // 🚨 Enterprise Fix: Tell the frontend EXACTLY why it failed so it can silently refresh
+    // Tell the frontend exactly why it failed so it can silently refresh
     if (err.name === "TokenExpiredError") {
-      return next(new AppError("Token expired", 401)); 
+      return next(new AppError("Token expired", 401));
     }
     return next(new AppError("Not authorized, invalid token", 401));
   }
@@ -47,12 +45,7 @@ const authorizeRoles = (...roles) => {
     }
 
     if (!roles.includes(req.user.role)) {
-      return next(
-        new AppError(
-          `Role (${req.user.role}) is not allowed to access this route`,
-          403
-        )
-      );
+      return next(new AppError("You do not have permission to access this route", 403));
     }
 
     next();
