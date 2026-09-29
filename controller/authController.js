@@ -78,6 +78,22 @@ const loginUser = asyncHandler(async (req, res) => {
   });
 });
 
+/* ================= GOOGLE SIGN-IN ================= */
+
+const googleAuth = asyncHandler(async (req, res) => {
+  const { userAgent, ip } = getFingerprint(req);
+
+  const result = await authService.loginWithGoogle(req.body.credential, userAgent, ip);
+
+  res.cookie("accessToken", result.accessToken, getAccessCookieOptions());
+  res.cookie("refreshToken", result.refreshToken, getRefreshCookieOptions());
+
+  res.status(200).json({
+    success: true,
+    data: result.user,
+  });
+});
+
 /* ================= REFRESH (TOKEN ROTATION) ================= */
 
 const refreshToken = asyncHandler(async (req, res) => {
@@ -149,6 +165,7 @@ module.exports = {
   getSocketToken,
   registerUser,
   loginUser,
+  googleAuth,
   refreshToken,
   logoutUser,
   getMe,

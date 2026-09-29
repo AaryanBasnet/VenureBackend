@@ -66,6 +66,14 @@ const verifyPasswordSchema = z.object({
   password: z.string().min(1, "Password is required").max(128),
 });
 
+/* ========================
+   GOOGLE SIGN-IN
+======================== */
+// `credential` is the ID token JWT from Google Identity Services; verified server-side
+const googleAuthSchema = z.object({
+  credential: z.string().min(20, "Missing Google credential"),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -73,4 +81,5 @@ module.exports = {
   verifyResetCodeSchema,
   resetPasswordSchema,
   verifyPasswordSchema,
+  googleAuthSchema,
 };
