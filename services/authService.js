@@ -248,6 +248,7 @@ const logout = async (token) => {
 
 module.exports = {
   register,
+  issueSession,
   login,
   loginWithGoogle,
   refreshAccessToken,

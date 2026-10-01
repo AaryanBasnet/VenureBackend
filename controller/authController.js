@@ -44,13 +44,19 @@ const clearAuthCookies = (res) => {
 /* ================= REGISTER ================= */
 
 const registerUser = asyncHandler(async (req, res) => {
-  // Registration usually just creates the account. 
-  // We force them to log in afterward to establish the secure session.
-  await authService.register(req.body);
+  const { userAgent, ip } = getFingerprint(req);
+
+  // Auto-login after registration, same as Google sign-up: one less step,
+  // and there's no email-verification gate to enforce before trusting the session.
+  const user = await authService.register(req.body);
+  const result = await authService.issueSession(user, userAgent, ip);
+
+  res.cookie("accessToken", result.accessToken, getAccessCookieOptions());
+  res.cookie("refreshToken", result.refreshToken, getRefreshCookieOptions());
 
   res.status(201).json({
     success: true,
-    message: "User registered successfully. Please log in.",
+    data: result.user,
   });
 });
 
