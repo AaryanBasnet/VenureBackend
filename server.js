@@ -44,6 +44,10 @@ if (!process.env.STRIPE_SECRET_KEY) {
   logger.warn("STRIPE_SECRET_KEY is not set: payments and bookings will be unavailable");
 }
 
+if (!process.env.GOOGLE_CLIENT_ID) {
+  logger.warn("GOOGLE_CLIENT_ID is not set: Google sign-in will be unavailable");
+}
+
 const startServer = async () => {
   try {
     await connectDB();

@@ -3,8 +3,13 @@ const RefreshToken = require("../model/refreshToken");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const { OAuth2Client } = require("google-auth-library");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
+
+const googleClient = process.env.GOOGLE_CLIENT_ID
+  ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+  : null;
 
 // A second refresh with the same token inside this window is treated as a
 // concurrent refresh (e.g. two tabs), not as a stolen-token replay.
@@ -72,17 +77,9 @@ const register = async ({ name, email, phone, role, password }) => {
   return user;
 };
 
-/* ================= LOGIN ================= */
+/* ================= SESSION ISSUING (shared by password + Google login) ================= */
 
-const login = async (email, password, userAgent, ip) => {
-  email = email.toLowerCase().trim();
-
-  const user = await findActiveUser({ email }).select("+password");
-  if (!user) throw new AppError("Invalid credentials", 401);
-
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) throw new AppError("Invalid credentials", 401);
-
+const issueSession = async (user, userAgent, ip) => {
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
@@ -106,6 +103,75 @@ const login = async (email, password, userAgent, ip) => {
       avatar: user.avatar,
     },
   };
+};
+
+/* ================= LOGIN ================= */
+
+const login = async (email, password, userAgent, ip) => {
+  email = email.toLowerCase().trim();
+
+  const user = await findActiveUser({ email }).select("+password");
+  if (!user) throw new AppError("Invalid credentials", 401);
+  if (!user.password) {
+    // Registered via Google; there is no password to check against
+    throw new AppError("This account signs in with Google. Use “Continue with Google” instead.", 401);
+  }
+
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) throw new AppError("Invalid credentials", 401);
+
+  return issueSession(user, userAgent, ip);
+};
+
+/* ================= GOOGLE SIGN-IN ================= */
+// One endpoint for both login and first-time registration: an unrecognised
+// Google account is created on the spot, same as clicking "Register" would.
+const loginWithGoogle = async (idToken, userAgent, ip) => {
+  if (!googleClient) {
+    throw new AppError("Google sign-in is not configured on this server", 501);
+  }
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    payload = ticket.getPayload();
+  } catch (err) {
+    logger.warn({ message: "Google ID token verification failed", error: err.message });
+    throw new AppError("We could not verify that Google sign-in. Please try again.", 401);
+  }
+
+  if (!payload.email_verified) {
+    throw new AppError("Your Google email is not verified", 401);
+  }
+
+  const email = payload.email.toLowerCase().trim();
+
+  let user = await findActiveUser({ googleId: payload.sub });
+  if (!user) {
+    // Same email, no Google link yet: attach this Google account to it
+    user = await findActiveUser({ email });
+    if (user) {
+      user.googleId = payload.sub;
+      if (!user.avatar && payload.picture) user.avatar = payload.picture;
+      await user.save();
+    }
+  }
+
+  if (!user) {
+    user = await User.create({
+      name: payload.name || email.split("@")[0],
+      email,
+      googleId: payload.sub,
+      avatar: payload.picture || "",
+      role: "Customer",
+    });
+    logger.info(`User registered via Google: ${user._id}`);
+  }
+
+  return issueSession(user, userAgent, ip);
 };
 
 /* ================= REFRESH (TOKEN ROTATION) ================= */
@@ -182,7 +248,9 @@ const logout = async (token) => {
 
 module.exports = {
   register,
+  issueSession,
   login,
+  loginWithGoogle,
   refreshAccessToken,
   logout,
   revokeAllSessions,

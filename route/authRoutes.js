@@ -10,7 +10,7 @@ const { protectRoute } = require("../middleware/authMiddleware");
 const { loginLimiter, registerLimiter } = require("../middleware/rateLimiters");
 
 // Validations (Ensure the path matches where you store your Zod schemas)
-const { registerSchema, loginSchema } = require("../validators/authValidators");
+const { registerSchema, loginSchema, googleAuthSchema } = require("../validators/authValidators");
 
 /* ========================
    AUTH ROUTES
@@ -27,6 +27,13 @@ router.post(
   loginLimiter,
   validate(loginSchema),
   authController.loginUser
+);
+
+router.post(
+  "/google",
+  loginLimiter,
+  validate(googleAuthSchema),
+  authController.googleAuth
 );
 
 // Cookie-based token rotation — no body validation needed

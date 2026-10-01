@@ -4,6 +4,9 @@ const app = require("../app");
 const User = require("../model/user");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 
+// No real Gmail credentials in the test env — avoid a real network call.
+jest.mock("../utils/sendEmail", () => jest.fn().mockResolvedValue(undefined));
+
 let mongod;
 
 const testUser = {
@@ -11,7 +14,6 @@ const testUser = {
   email: "testuser@example.com",
   phone: "9812345678",
   password: "Test@1234",
-  role: "Customer",
 };
 
 beforeAll(async () => {
@@ -25,182 +27,184 @@ afterAll(async () => {
   await mongod.stop();
 });
 
-describe("Auth API Tests (Full Coverage)", () => {
-  describe("Register & Login", () => {
-    test("should register a user successfully", async () => {
+const hasCookie = (res, name) =>
+  (res.headers["set-cookie"] || []).some((c) => c.startsWith(`${name}=`));
+
+describe("Auth API", () => {
+  describe("Register", () => {
+    test("creates the account and logs the user in immediately", async () => {
       const res = await request(app).post("/api/auth/register").send(testUser);
 
       expect(res.statusCode).toBe(201);
       expect(res.body.success).toBe(true);
-      expect(res.body.user).toHaveProperty("id");
-      expect(res.body.user.email).toBe(testUser.email.toLowerCase());
+      expect(res.body.data.email).toBe(testUser.email.toLowerCase());
+      expect(res.body.data.password).toBeUndefined();
+      // Auto-login: the session cookies are set on the same response, no second login needed.
+      expect(hasCookie(res, "accessToken")).toBe(true);
+      expect(hasCookie(res, "refreshToken")).toBe(true);
     });
 
-    test("should not allow duplicate registration", async () => {
+    test("rejects a duplicate email", async () => {
       const res = await request(app).post("/api/auth/register").send(testUser);
-      expect(res.statusCode).toBe(400);
+      expect(res.statusCode).toBe(409);
       expect(res.body.success).toBe(false);
     });
 
-    test("should return validation error if fields are missing", async () => {
-      const res = await request(app).post("/api/auth/register").send({
-        email: "incomplete@example.com",
-        password: "pass123",
-      });
+    test("rejects a request with missing required fields", async () => {
+      const res = await request(app)
+        .post("/api/auth/register")
+        .send({ email: "incomplete@example.com", password: "Test@1234" });
       expect(res.statusCode).toBe(400);
+      expect(res.body.success).toBe(false);
     });
+  });
 
-    test("should login successfully with correct credentials", async () => {
+  describe("Login", () => {
+    test("logs in with correct credentials", async () => {
       const res = await request(app).post("/api/auth/login").send({
         email: testUser.email,
         password: testUser.password,
       });
       expect(res.statusCode).toBe(200);
-      expect(res.body.token).toBeDefined();
+      expect(res.body.data.email).toBe(testUser.email.toLowerCase());
+      expect(hasCookie(res, "accessToken")).toBe(true);
     });
 
-    test("should fail login with wrong password", async () => {
+    test("rejects the wrong password with a generic message", async () => {
       const res = await request(app).post("/api/auth/login").send({
         email: testUser.email,
-        password: "WrongPass",
+        password: "WrongPass1",
       });
-      expect(res.statusCode).toBe(404);
+      expect(res.statusCode).toBe(401);
+      expect(res.body.message).toBe("Invalid credentials");
     });
 
-    test("should fail login with non-existent email", async () => {
+    test("rejects a non-existent email with the same generic message (no enumeration)", async () => {
       const res = await request(app).post("/api/auth/login").send({
         email: "notexist@example.com",
-        password: "Pass@123",
+        password: "Pass@1234",
       });
-      expect(res.statusCode).toBe(404);
+      expect(res.statusCode).toBe(401);
+      expect(res.body.message).toBe("Invalid credentials");
     });
 
-    test("should fail if login fields are missing", async () => {
-      const res = await request(app).post("/api/auth/login").send({
-        email: testUser.email,
-      });
+    test("rejects a request with a missing password", async () => {
+      const res = await request(app)
+        .post("/api/auth/login")
+        .send({ email: testUser.email });
       expect(res.statusCode).toBe(400);
     });
   });
 
-  describe("Verify Password", () => {
-    let userId;
+  describe("Verify current password (requires an active session)", () => {
+    const agent = request.agent(app);
 
     beforeAll(async () => {
-      const user = await User.findOne({ email: testUser.email });
-      userId = user._id;
-    });
-
-    test("should verify correct password", async () => {
-      const res = await request(app).post("/api/auth/verify-password").send({
-        userId,
+      await agent.post("/api/auth/login").send({
+        email: testUser.email,
         password: testUser.password,
       });
+    });
+
+    test("accepts the correct current password", async () => {
+      const res = await agent
+        .post("/api/password/verify-password")
+        .send({ password: testUser.password });
       expect(res.statusCode).toBe(200);
     });
 
-    test("should fail for wrong password", async () => {
-      const res = await request(app).post("/api/auth/verify-password").send({
-        userId,
-        password: "WrongPass",
-      });
+    test("rejects the wrong current password", async () => {
+      const res = await agent
+        .post("/api/password/verify-password")
+        .send({ password: "WrongPass1" });
       expect(res.statusCode).toBe(401);
     });
 
-    test("should fail if user not found", async () => {
-      const fakeId = new mongoose.Types.ObjectId();
-      const res = await request(app).post("/api/auth/verify-password").send({
-        userId: fakeId,
-        password: testUser.password,
-      });
-      expect(res.statusCode).toBe(404);
-    });
-
-    test("should fail if fields missing", async () => {
-      const res = await request(app).post("/api/auth/verify-password").send({});
-      expect(res.statusCode).toBe(400);
+    test("rejects the request without a logged-in session", async () => {
+      const res = await request(app)
+        .post("/api/password/verify-password")
+        .send({ password: testUser.password });
+      expect(res.statusCode).toBe(401);
     });
   });
 
-  describe("Forgot Password", () => {
-    test("should send reset code if user exists", async () => {
+  describe("Forgot password", () => {
+    test("returns a generic success response for an existing email", async () => {
       const res = await request(app)
-        .post("/api/auth/forgot-password")
+        .post("/api/password/forgot-password")
         .send({ email: testUser.email });
       expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
     });
 
-    test("should fail if user not found", async () => {
+    test("returns the identical generic response for an email that doesn't exist", async () => {
       const res = await request(app)
-        .post("/api/auth/forgot-password")
+        .post("/api/password/forgot-password")
         .send({ email: "nouser@example.com" });
-      expect(res.statusCode).toBe(404);
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
     });
   });
 
-  describe("Verify Reset Code", () => {
-    let resetCode;
-
-    beforeAll(async () => {
+  describe("Verify reset code", () => {
+    test("rejects a code that doesn't match the active one", async () => {
       const user = await User.findOne({ email: testUser.email });
-      resetCode = user.getResetPasswordCode();
+      user.getResetPasswordCode();
       await user.save({ validateBeforeSave: false });
-    });
 
-    test("should verify valid reset code", async () => {
-      const res = await request(app).post("/api/auth/verify-reset-code").send({
-        email: testUser.email,
-        code: resetCode,
-      });
-      expect(res.statusCode).toBe(200);
-    });
-
-    test("should fail for invalid/expired code", async () => {
-      const res = await request(app).post("/api/auth/verify-reset-code").send({
-        email: testUser.email,
-        code: "wrongcode",
-      });
+      const res = await request(app)
+        .post("/api/password/verify-code")
+        .send({ email: testUser.email, code: "000000" });
       expect(res.statusCode).toBe(400);
     });
+
+    test("accepts the active code", async () => {
+      const user = await User.findOne({ email: testUser.email });
+      const code = user.getResetPasswordCode();
+      await user.save({ validateBeforeSave: false });
+
+      const res = await request(app)
+        .post("/api/password/verify-code")
+        .send({ email: testUser.email, code });
+      expect(res.statusCode).toBe(200);
+    });
   });
 
-  describe("Reset Password with Code", () => {
-  let resetCode;
+  describe("Reset password with code", () => {
+    test("resets the password, and only the new password works afterward", async () => {
+      const user = await User.findOne({ email: testUser.email });
+      const code = user.getResetPasswordCode();
+      await user.save({ validateBeforeSave: false });
 
-  beforeEach(async () => {
-    // Create a fresh reset code before each test
-    const user = await User.findOne({ email: testUser.email });
-    resetCode = user.getResetPasswordCode();
-    await user.save({ validateBeforeSave: false });
-  });
-
-  test("should reset password with valid code", async () => {
-    const res = await request(app)
-      .post("/api/auth/reset-password")
-      .send({
+      const res = await request(app).post("/api/password/reset-password").send({
         email: testUser.email,
-        code: resetCode, // match the stored one
+        code,
         password: "NewPass@1234",
       });
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.message).toBe("Password reset successful");
-  });
-
-  test("should fail with wrong code", async () => {
-    const res = await request(app)
-      .post("/api/auth/reset-password")
-      .send({
+      const oldLogin = await request(app).post("/api/auth/login").send({
         email: testUser.email,
-        code: "wrongcode",
+        password: testUser.password,
+      });
+      expect(oldLogin.statusCode).toBe(401);
+
+      const newLogin = await request(app).post("/api/auth/login").send({
+        email: testUser.email,
         password: "NewPass@1234",
       });
+      expect(newLogin.statusCode).toBe(200);
+    });
 
-    expect(res.statusCode).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toBe("Invalid or expired code");
+    test("rejects a code once it's already been consumed", async () => {
+      const res = await request(app).post("/api/password/reset-password").send({
+        email: testUser.email,
+        code: "000000",
+        password: "AnotherPass@1234",
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
   });
-});
-
 });

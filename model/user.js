@@ -16,8 +16,16 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    // Google-only accounts never set a password
+    required: function () {
+      return !this.googleId;
+    },
     select: false, // ENTERPRISE LAYER: Never return the password hash by default in queries
+  },
+  googleId: {
+    type: String,
+    sparse: true, // Lets every password-only account omit this without violating uniqueness
+    unique: true,
   },
   role: {
     type: String,

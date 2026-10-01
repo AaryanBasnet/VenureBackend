@@ -44,13 +44,19 @@ const clearAuthCookies = (res) => {
 /* ================= REGISTER ================= */
 
 const registerUser = asyncHandler(async (req, res) => {
-  // Registration usually just creates the account. 
-  // We force them to log in afterward to establish the secure session.
-  await authService.register(req.body);
+  const { userAgent, ip } = getFingerprint(req);
+
+  // Auto-login after registration, same as Google sign-up: one less step,
+  // and there's no email-verification gate to enforce before trusting the session.
+  const user = await authService.register(req.body);
+  const result = await authService.issueSession(user, userAgent, ip);
+
+  res.cookie("accessToken", result.accessToken, getAccessCookieOptions());
+  res.cookie("refreshToken", result.refreshToken, getRefreshCookieOptions());
 
   res.status(201).json({
     success: true,
-    message: "User registered successfully. Please log in.",
+    data: result.user,
   });
 });
 
@@ -72,6 +78,22 @@ const loginUser = asyncHandler(async (req, res) => {
   res.cookie("refreshToken", result.refreshToken, getRefreshCookieOptions());
 
   // 3. Return the user object in the standard envelope
+  res.status(200).json({
+    success: true,
+    data: result.user,
+  });
+});
+
+/* ================= GOOGLE SIGN-IN ================= */
+
+const googleAuth = asyncHandler(async (req, res) => {
+  const { userAgent, ip } = getFingerprint(req);
+
+  const result = await authService.loginWithGoogle(req.body.credential, userAgent, ip);
+
+  res.cookie("accessToken", result.accessToken, getAccessCookieOptions());
+  res.cookie("refreshToken", result.refreshToken, getRefreshCookieOptions());
+
   res.status(200).json({
     success: true,
     data: result.user,
@@ -149,6 +171,7 @@ module.exports = {
   getSocketToken,
   registerUser,
   loginUser,
+  googleAuth,
   refreshToken,
   logoutUser,
   getMe,
