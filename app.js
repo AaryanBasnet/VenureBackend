@@ -108,6 +108,8 @@ app.use(express.json({ limit: "10kb" }));
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
   max: 1000, // per IP; the SPA makes many calls per page and users can share an IP
+  // Local testing only: DISABLE_RATE_LIMITS=1 turns the global limit off (never in production)
+  skip: () => process.env.DISABLE_RATE_LIMITS === "1" && process.env.NODE_ENV !== "production",
   message: {
     success: false,
     message: "Too many requests, please try again later.",
