@@ -3,6 +3,7 @@ const router = express.Router();
 
 // Controllers
 const venueController = require("../controller/venueController");
+const spaceController = require("../controller/spaceController");
 
 // Security & Middlewares
 const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
@@ -11,6 +12,7 @@ const { venueImages } = require("../middleware/uploadMiddleware");
 
 // Validations
 const { createVenueSchema, searchVenuesSchema, updateVenueSchema } = require("../validators/venueValidators");
+const { createSpaceSchema } = require("../validators/spaceValidators");
 
 /* =========================================================================
    PUBLIC / DISCOVERY ROUTES (No auth required to browse venues)
@@ -27,6 +29,12 @@ router.get("/categories/counts", venueController.getCategoryCounts);
 
 // Landing page: admin-curated featured venues. Must come before "/:id".
 router.get("/featured", venueController.getFeaturedVenues);
+
+// A venue's independently-bookable halls/sections.
+router.get("/:venueId/spaces", spaceController.getSpacesForVenue);
+
+// Booked time ranges per space for a date window (public, no personal details): GET ?from=&to=
+router.get("/:venueId/availability", venueController.getVenueAvailability);
 
 // GET /api/venues/:id
 router.get("/:id", venueController.getVenueById);
@@ -64,6 +72,13 @@ router.post(
   authorizeRoles("VenueOwner"),
   venueImages(10), // Cloudinary Multer execution
   venueController.uploadVenueImages
+);
+
+router.post(
+  "/:venueId/spaces",
+  authorizeRoles("VenueOwner"),
+  validate(createSpaceSchema),
+  spaceController.createSpace
 );
 
 router.put(

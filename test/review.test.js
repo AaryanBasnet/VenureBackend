@@ -1,61 +1,56 @@
 const request = require("supertest");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 const { MongoMemoryServer } = require("mongodb-memory-server");
-const jwt = require("jsonwebtoken");
 const app = require("../app");
-const Venue = require("../model/venue");
 const User = require("../model/user");
+const Venue = require("../model/venue");
+const Space = require("../model/space");
+const Booking = require("../model/booking");
+const Review = require("../model/review");
 
 let mongod;
-let userToken;
-let ownerToken;
-let userId;
+let customerId;
 let ownerId;
 let venueId;
+let spaceId;
+let customerAgent;
+let ownerAgent;
+let adminAgent;
+
+const PASSWORD = "Test@1234";
+
+const loginAgent = async (email) => {
+  const agent = request.agent(app);
+  await agent.post("/api/auth/login").send({ email, password: PASSWORD });
+  return agent;
+};
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri());
 
-  // Create a normal user
-  const user = await User.create({
-    name: "Regular User",
-    email: "user@test.com",
-    password: "hashedpassword",
-    role: "Customer",
-  });
-  userId = user._id;
-  userToken = jwt.sign({ _id: userId, role: user.role }, process.env.JWT_SECRET);
+  const hashed = await bcrypt.hash(PASSWORD, 10);
 
-  // Create a venue owner user
-  const owner = await User.create({
-    name: "Venue Owner",
-    email: "owner@test.com",
-    password: "hashedpassword",
-    role: "VenueOwner",
-  });
+  const customer = await User.create({ name: "Regular User", email: "user@test.com", password: hashed, role: "Customer" });
+  const owner = await User.create({ name: "Venue Owner", email: "owner@test.com", password: hashed, role: "VenueOwner" });
+  await User.create({ name: "Admin", email: "admin@test.com", password: hashed, role: "Admin" });
+  customerId = customer._id;
   ownerId = owner._id;
-  ownerToken = jwt.sign({ _id: ownerId, role: owner.role }, process.env.JWT_SECRET);
 
-  // Create a venue owned by the venue owner
   const venue = await Venue.create({
     venueName: "Test Venue",
-    capacity: 100,
-    description: "Test venue description",
-    pricePerHour: 1000,
-    amenities: ["WiFi"],
-    location: {
-      address: "123 Venue St",
-      city: "Test City",
-      state: "Test State",
-      country: "Test Country",
-    },
     owner: ownerId,
     status: "approved",
-    averageRating: 0,
-    reviews: [],
+    location: { address: "123 Venue St", city: "Test City", state: "Test State", country: "Test Country" },
   });
   venueId = venue._id;
+  const space = await Space.create({ venue: venueId, name: "Hall", capacity: 100 });
+  spaceId = space._id;
+
+  customerAgent = await loginAgent("user@test.com");
+  ownerAgent = await loginAgent("owner@test.com");
+  adminAgent = await loginAgent("admin@test.com");
 });
 
 afterAll(async () => {
@@ -65,145 +60,117 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
-  // Clean reviews and reset average rating
-  await Venue.updateOne(
-    { _id: venueId },
-    { $set: { reviews: [], averageRating: 0 } }
-  );
+  await Review.deleteMany({});
+  await Booking.deleteMany({});
+  await Venue.updateOne({ _id: venueId }, { averageRating: 0, totalReviews: 0 });
 });
 
-describe("Venue Review API", () => {
-  test("POST /api/:id/reviews - user can add a review", async () => {
-    const res = await request(app)
-      .post(`/api/${venueId}/reviews`)
-      .set("Authorization", `Bearer ${userToken}`)
-      .send({ rating: 5, comment: "Great place", title: "Excellent" });
+const createCompletedBooking = async () => {
+  return await Booking.create({
+    customer: customerId,
+    venue: venueId,
+    space: spaceId,
+    startTime: new Date(Date.now() - 2 * 60 * 60 * 1000),
+    endTime: new Date(Date.now() - 60 * 60 * 1000),
+    numberOfGuests: 10,
+    eventType: "Birthday",
+    contactName: "Test Customer",
+    phoneNumber: "9800000000",
+    totalPrice: 10000,
+    depositAmount: 2000,
+    balanceAmount: 8000,
+    status: "completed",
+  });
+};
+
+describe("Review API", () => {
+  test("POST /api/venue/:venueId - customer can review a completed booking", async () => {
+    const booking = await createCompletedBooking();
+    const res = await customerAgent
+      .post(`/api/venue/${venueId}`)
+      .send({ bookingId: booking._id.toString(), rating: 5, comment: "Great place", title: "Excellent" });
 
     expect(res.statusCode).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(Array.isArray(res.body.data)).toBe(true);
-    expect(res.body.data[0]).toMatchObject({
-      rating: 5,
-      comment: "Great place",
-      title: "Excellent",
-    });
+    expect(res.body.data).toMatchObject({ rating: 5, comment: "Great place", title: "Excellent" });
 
     const venue = await Venue.findById(venueId);
     expect(venue.averageRating).toBe(5);
   });
 
-  test("POST /api/:id/reviews - user cannot add multiple reviews", async () => {
-    // First review
-    await request(app)
-      .post(`/api/${venueId}/reviews`)
-      .set("Authorization", `Bearer ${userToken}`)
-      .send({ rating: 4, comment: "Nice", title: "Good" });
+  test("POST /api/venue/:venueId - rejects a review without a completed booking", async () => {
+    const res = await customerAgent
+      .post(`/api/venue/${venueId}`)
+      .send({ bookingId: new mongoose.Types.ObjectId().toString(), rating: 5, comment: "Nice", title: "Good" });
 
-    // Second review attempt by same user
-    const res = await request(app)
-      .post(`/api/${venueId}/reviews`)
-      .set("Authorization", `Bearer ${userToken}`)
-      .send({ rating: 3, comment: "Changed mind", title: "Okay" });
+    expect(res.statusCode).toBe(403);
+  });
+
+  test("POST /api/venue/:venueId - rejects a duplicate review for the same booking", async () => {
+    const booking = await createCompletedBooking();
+    await customerAgent
+      .post(`/api/venue/${venueId}`)
+      .send({ bookingId: booking._id.toString(), rating: 4, comment: "Nice", title: "Good" });
+
+    const res = await customerAgent
+      .post(`/api/venue/${venueId}`)
+      .send({ bookingId: booking._id.toString(), rating: 3, comment: "Changed mind", title: "Okay" });
 
     expect(res.statusCode).toBe(400);
     expect(res.body.message).toMatch(/already reviewed/);
   });
 
-  test("GET /api/:id/reviews - anyone can fetch reviews", async () => {
-    // Insert review directly into DB
-    await Venue.findByIdAndUpdate(venueId, {
-      $push: {
-        reviews: { user: userId, rating: 5, comment: "Awesome!", title: "Superb" },
-      },
-      averageRating: 5,
-    });
+  test("GET /api/venue/:venueId - anyone can fetch reviews", async () => {
+    const booking = await createCompletedBooking();
+    await Review.create({ venue: venueId, booking: booking._id, user: customerId, rating: 5, comment: "Awesome!", title: "Superb" });
 
-    const res = await request(app).get(`/api/${venueId}/reviews`);
+    const res = await request(app).get(`/api/venue/${venueId}`);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data[0]).toMatchObject({ comment: "Awesome!", rating: 5, title: "Superb" });
+  });
+
+  test("DELETE /api/:reviewId - the review's author can delete it", async () => {
+    const booking = await createCompletedBooking();
+    const review = await Review.create({ venue: venueId, booking: booking._id, user: customerId, rating: 4, comment: "My review", title: "Opinion" });
+
+    const res = await customerAgent.delete(`/api/${review._id}`);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(await Review.findById(review._id)).toBeNull();
+  });
+
+  test("DELETE /api/:reviewId - a different user cannot delete someone else's review", async () => {
+    const booking = await createCompletedBooking();
+    const review = await Review.create({ venue: venueId, booking: booking._id, user: customerId, rating: 5, comment: "User review", title: "Opinion" });
+
+    const res = await ownerAgent.delete(`/api/${review._id}`);
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  test("GET /api/owner - venue owner fetches reviews for their venues", async () => {
+    const booking = await createCompletedBooking();
+    await Review.create({ venue: venueId, booking: booking._id, user: customerId, rating: 4, comment: "Nice venue", title: "Good" });
+
+    const res = await ownerAgent.get("/api/owner");
 
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data)).toBe(true);
-    expect(res.body.data[0]).toMatchObject({
-      comment: "Awesome!",
-      rating: 5,
-      title: "Superb",
-    });
+    expect(res.body.data[0]).toMatchObject({ comment: "Nice venue" });
+    expect(res.body.data[0].venue).toMatchObject({ venueName: "Test Venue" });
   });
 
-  test("DELETE /api/:venueId/reviews/:reviewId - owner can delete their review", async () => {
-    // Add review by owner user (who is also the venue owner)
-    const venue = await Venue.findById(venueId);
-    venue.reviews.push({
-      user: ownerId,
-      rating: 4,
-      comment: "Owner review",
-      title: "Owner's opinion",
-    });
-    await venue.save();
+  test("PATCH /api/:reviewId/feature - admin can toggle featured status", async () => {
+    const booking = await createCompletedBooking();
+    const review = await Review.create({ venue: venueId, booking: booking._id, user: customerId, rating: 5, comment: "Great", title: "Nice" });
 
-    const reviewId = venue.reviews[0]._id;
-
-    const res = await request(app)
-      .delete(`/api/${venueId}/reviews/${reviewId}`)
-      .set("Authorization", `Bearer ${ownerToken}`);
+    const res = await adminAgent.patch(`/api/${review._id}/feature`);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.message).toMatch(/deleted/);
-
-    const updatedVenue = await Venue.findById(venueId);
-    expect(updatedVenue.reviews.length).toBe(0);
-    expect(updatedVenue.averageRating).toBe(0);
-  });
-
-  test("DELETE /api/:venueId/reviews/:reviewId - user who is not owner cannot delete", async () => {
-    // Add review by user
-    const venue = await Venue.findById(venueId);
-    venue.reviews.push({
-      user: userId,
-      rating: 5,
-      comment: "User review",
-      title: "User opinion",
-    });
-    await venue.save();
-
-    const reviewId = venue.reviews[0]._id;
-
-    // Attempt delete with different user (venue owner, but not review owner)
-    const res = await request(app)
-      .delete(`/api/${venueId}/reviews/${reviewId}`)
-      .set("Authorization", `Bearer ${ownerToken}`);
-
-    expect(res.statusCode).toBe(404); // Review not found or unauthorized
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/not found or unauthorized/);
-  });
-
-  test("GET /api/owner/reviews - venue owner fetches reviews for their venues", async () => {
-    // Add reviews to venue
-    const venue = await Venue.findById(venueId);
-    venue.reviews.push({
-      user: userId,
-      rating: 4,
-      comment: "Nice venue",
-      title: "Good",
-    });
-    venue.averageRating = 4;
-    await venue.save();
-
-    const res = await request(app)
-      .get("/api/owner/reviews")
-      .set("Authorization", `Bearer ${ownerToken}`);
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(Array.isArray(res.body.data)).toBe(true);
-
-    const firstVenue = res.body.data[0];
-    expect(firstVenue).toHaveProperty("venueId");
-    expect(firstVenue).toHaveProperty("venueName", "Test Venue");
-    expect(firstVenue).toHaveProperty("reviews");
-    expect(Array.isArray(firstVenue.reviews)).toBe(true);
-    expect(firstVenue.reviews[0]).toMatchObject({ comment: "Nice venue" });
+    expect(res.body.data.isFeatured).toBe(true);
   });
 });

@@ -1,47 +1,50 @@
 const express = require("express");
 const router = express.Router();
+
+// Controllers
 const bookingController = require("../controller/bookingController");
 
 // Middlewares
-const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
 const validate = require("../middleware/validate");
+const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
 
-// Zod Schemas
-const { createBookingSchema } = require("../validators/bookingValidators");
+// Validations
+const { settleBalanceSchema } = require("../validators/bookingValidators");
 
 /* ========================
-   PUBLIC ROUTES
+   PUBLIC
 ======================== */
 router.get("/top-venues", bookingController.getTopVenuesByBooking);
 
-// All booking routes below require authentication
 router.use(protectRoute);
 
 /* ========================
-   CUSTOMER ROUTES
+   CUSTOMER
 ======================== */
-router.post(
-  "/",
-  authorizeRoles("Customer", "Admin"),
-  validate(createBookingSchema, "body"), // ✨ Zod catches bad data before it hits the controller
-  bookingController.createBooking
-);
-
 router.get("/my-bookings", authorizeRoles("Customer"), bookingController.getBookingsForCustomer);
 router.get("/my-count", authorizeRoles("Customer"), bookingController.getCustomerBookingCount);
-// Ownership (customer / venue owner / admin) is enforced in the service
-router.put("/:id/cancel", authorizeRoles("Customer", "VenueOwner", "Admin"), bookingController.cancelBooking);
 
 /* ========================
-   VENUE OWNER ROUTES
+   SHARED (ownership enforced in the service)
+======================== */
+router.put("/:id/cancel", bookingController.cancelBooking);
+
+/* ========================
+   VENUE OWNER
 ======================== */
 router.get("/owner-bookings", authorizeRoles("VenueOwner"), bookingController.getBookingsForOwner);
 router.get("/owner-earnings", authorizeRoles("VenueOwner"), bookingController.getMonthlyEarningsForOwner);
 router.get("/owner-count", authorizeRoles("VenueOwner"), bookingController.getTotalBookingsForOwner);
-router.put("/:id/approve", authorizeRoles("VenueOwner"), bookingController.approveBooking);
+router.put("/:id/complete", authorizeRoles("VenueOwner", "Admin"), bookingController.completeBooking);
+router.put(
+  "/:id/settle-balance",
+  authorizeRoles("VenueOwner"),
+  validate(settleBalanceSchema),
+  bookingController.settleBalance
+);
 
 /* ========================
-   ADMIN / GLOBAL ROUTES
+   ADMIN
 ======================== */
 router.get("/total", authorizeRoles("Admin"), bookingController.getTotalBookings);
 

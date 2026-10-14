@@ -14,6 +14,9 @@ const rateLimit = require("express-rate-limit")
 const authRoutes = require("./route/authRoutes");
 const passwordRoutes = require("./route/passwordRoutes")
 const venueRoutes = require("./route/venueRoutes");
+const spaceRoutes = require("./route/spaceRoutes");
+const inquiryRoutes = require("./route/inquiryRoutes");
+const quotationRoutes = require("./route/quotationRoutes");
 const bookingRoutes = require("./route/bookingRoutes");
 const userRoutes = require("./route/userRoutes");
 const chatRoutes = require("./route/chatRoutes");
@@ -45,8 +48,7 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "https://js.stripe.com"],
-        frameSrc: ["'self'", "https://js.stripe.com", "https://hooks.stripe.com"],
+        scriptSrc: ["'self'"],
         connectSrc: ["'self'", ...configuredOrigins],
         imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
         styleSrc: ["'self'", "'unsafe-inline'"],
@@ -134,6 +136,9 @@ if (process.env.NODE_ENV === "test") {
 app.use("/api/auth", authRoutes);
 app.use("/api/password", passwordRoutes)
 app.use("/api/venues", venueRoutes);
+app.use("/api/spaces", spaceRoutes);
+app.use("/api/inquiries", inquiryRoutes);
+app.use("/api/quotations", quotationRoutes);
 // app.use("/api/admin/user", adminUserRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/bookings", bookingRoutes);

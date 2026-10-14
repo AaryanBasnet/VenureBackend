@@ -32,9 +32,8 @@ const getGlobalMonthlyEarnings = async () => {
   const earnings = await Booking.aggregate([
     {
       $match: {
-        status: { $in: ["approved", "completed"] },
-        // ✨ BUG FIX: Using the new startTime field instead of bookingDate
-        startTime: { $gte: startOfYear, $lte: endOfYear }, 
+        status: { $in: ["confirmed", "completed"] },
+        startTime: { $gte: startOfYear, $lte: endOfYear },
       },
     },
     {

@@ -5,6 +5,27 @@ const imageSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Nepali venues price per plate, by food package (not per hour). The final price still
+// comes from the owner's Quotation; these are what the customer sees and can prefer.
+const packageSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true, maxlength: 60 },
+  tagline: { type: String, trim: true, maxlength: 80, default: "" },
+  pricePerPlate: { type: Number, required: true, min: 0 },
+  minPlates: { type: Number, min: 1, default: 1 },
+  highlights: { type: [{ type: String, trim: true, maxlength: 140 }], default: [] },
+});
+
+const drinkOptionSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true, maxlength: 60 },
+  description: { type: String, trim: true, maxlength: 140, default: "" },
+  items: { type: [{ type: String, trim: true, maxlength: 80 }], default: [] },
+});
+
+const maxItems = (max) => ({
+  validator: (list) => list.length <= max,
+  message: `At most ${max} entries allowed`,
+});
+
 // Matches the venue-type slugs on the public landing page (src/features/landing/content/landingContent.js)
 const VENUE_CATEGORIES = [
   "heritage-courtyards",
@@ -43,10 +64,6 @@ const VenueSchema = new mongoose.Schema(
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], index: "2dsphere" }, // [longitude, latitude]
     },
-    capacity: {
-      type: Number,
-      min: 1,
-    },
     venueImages: {
       type: [imageSchema],
       default: [],
@@ -59,9 +76,21 @@ const VenueSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
-    pricePerHour: {
-      type: Number,
-      min: 0,
+    packages: {
+      type: [packageSchema],
+      default: [],
+      validate: maxItems(6),
+    },
+    drinkOptions: {
+      type: [drinkOptionSchema],
+      default: [],
+      validate: maxItems(6),
+    },
+    // Public business contact for call / WhatsApp buttons (not the owner's account phone).
+    contactPhone: {
+      type: String,
+      trim: true,
+      maxlength: 20,
     },
     status: {
       type: String,

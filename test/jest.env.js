@@ -5,7 +5,6 @@ const defaults = {
   REFRESH_TOKEN_SECRET: "test-refresh-secret",
   DB_URL: "mongodb://127.0.0.1:27017/venure-test",
   FRONTEND_URL: "http://localhost:5173",
-  STRIPE_SECRET_KEY: "sk_test_dummy",
   CLOUDINARY_CLOUD_NAME: "test",
   CLOUDINARY_API_KEY: "test",
   CLOUDINARY_API_SECRET: "test",

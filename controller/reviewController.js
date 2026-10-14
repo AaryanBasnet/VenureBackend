@@ -5,10 +5,12 @@ const reviewService = require("../services/reviewService");
    STANDARD REVIEW CONTROLLERS
 ======================== */
 exports.addReview = asyncHandler(async (req, res) => {
+  const { bookingId, ...payload } = req.body;
   const review = await reviewService.addReview(
     req.params.venueId,
     req.user._id,
-    req.body
+    bookingId,
+    payload
   );
 
   res.status(201).json({

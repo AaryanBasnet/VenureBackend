@@ -10,10 +10,29 @@ const getUserChats = async (userId, venueId) => {
   const query = { participants: userId };
   if (venueId) query.venueId = venueId;
 
-  return await Chat.find(query)
+  const chats = await Chat.find(query)
     .populate("participants", "name role avatar")
     .populate("venueId", "venueName venueImages")
-    .sort("-updatedAt"); 
+    .sort("-updatedAt")
+    .lean();
+
+  // Add what the conversation list needs: the latest message and how many are unread by this user.
+  const ids = chats.map((c) => c._id);
+  const [lasts, unread] = await Promise.all([
+    Message.aggregate([
+      { $match: { chatId: { $in: ids } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: "$chatId", text: { $first: "$text" }, timestamp: { $first: "$createdAt" } } },
+    ]),
+    Message.aggregate([
+      { $match: { chatId: { $in: ids }, receiver: new mongoose.Types.ObjectId(String(userId)), seen: false } },
+      { $group: { _id: "$chatId", count: { $sum: 1 } } },
+    ]),
+  ]);
+  const lastBy = new Map(lasts.map((m) => [String(m._id), { text: m.text, timestamp: m.timestamp }]));
+  const unreadBy = new Map(unread.map((m) => [String(m._id), m.count]));
+
+  return chats.map((c) => ({ ...c, lastMessage: lastBy.get(String(c._id)) ?? null, unreadCount: unreadBy.get(String(c._id)) ?? 0 }));
 };
 
 const getOrCreateChat = async (userId, participantId, venueId) => {
