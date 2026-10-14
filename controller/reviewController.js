@@ -72,3 +72,12 @@ exports.toggleFeaturedStatus = asyncHandler(async (req, res) => {
     data: review,
   });
 });
+
+exports.getAdminReviews = asyncHandler(async (req, res) => {
+  const data = await reviewService.getAdminReviews(req.query);
+
+  res.status(200).json({
+    success: true,
+    data,
+  });
+});

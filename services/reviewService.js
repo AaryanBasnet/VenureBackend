@@ -1,6 +1,7 @@
 ﻿const Review = require("../model/review"); 
 const Venue = require("../model/venue");   
 const Booking = require("../model/booking");
+const User = require("../model/user");
 const AppError = require("../utils/AppError");
 
 /* ========================
@@ -106,7 +107,46 @@ const toggleFeaturedStatus = async (reviewId) => {
 
 
 
+/* ========================
+   ADMIN MODERATION LIST
+======================== */
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const getAdminReviews = async ({ page = 1, limit = 10, rating, featured, search } = {}) => {
+  const filter = {};
+  if (rating) filter.rating = rating;
+  if (featured !== undefined) filter.isFeatured = featured === true || featured === "true";
+
+  if (search) {
+    const rx = new RegExp(escapeRegex(search), "i");
+    const [users, venues] = await Promise.all([
+      User.find({ name: rx }).select("_id").lean(),
+      Venue.find({ venueName: rx }).select("_id").lean(),
+    ]);
+    filter.$or = [
+      { comment: rx },
+      { title: rx },
+      { user: { $in: users.map((u) => u._id) } },
+      { venue: { $in: venues.map((v) => v._id) } },
+    ];
+  }
+
+  const [reviews, total] = await Promise.all([
+    Review.find(filter)
+      .sort("-createdAt -_id")
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate("user", "name avatar")
+      .populate("venue", "venueName")
+      .lean(),
+    Review.countDocuments(filter),
+  ]);
+
+  return { reviews, total, pages: Math.ceil(total / limit) };
+};
+
 module.exports = {
+  getAdminReviews,
   addReview,
   getVenueReviews,
   getReviewsForOwnerVenues,
