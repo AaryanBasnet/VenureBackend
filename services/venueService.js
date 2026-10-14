@@ -316,6 +316,7 @@ const toggleFeatured = async (venueId) => {
 
 // Export ALL functions to satisfy the Controller
 module.exports = {
+  attachCapacity,
   createVenue,
   updateVenueImages,
   updateVenue,

@@ -1,6 +1,7 @@
 ﻿const User = require("../model/user");
 const Venue = require("../model/venue");
 const AppError = require("../utils/AppError");
+const { attachCapacity } = require("./venueService");
 
 const toggleFavorite = async (userId, venueId) => {
   // 1. Ensure the venue actually exists and isn't soft-deleted
@@ -32,13 +33,15 @@ const getFavoriteVenues = async (userId) => {
   const user = await User.findById(userId).populate({
     path: "favorites",
     match: { isDeleted: false, status: "approved" }, // Only populate active, approved venues
-    select: "venueName location averageRating venueImages",
+    select: "venueName location averageRating totalReviews venueImages category packages",
+    options: { lean: true },
   });
 
   if (!user) throw new AppError("User not found", 404);
 
   // Filter out any nulls in case a venue was hard-deleted from the database
-  return user.favorites.filter((venue) => venue !== null);
+  // Same card fields as the venue list: largest space and number of spaces
+  return attachCapacity(user.favorites.filter((venue) => venue !== null));
 };
 
 module.exports = {
