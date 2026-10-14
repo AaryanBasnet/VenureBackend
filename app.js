@@ -125,6 +125,13 @@ app.use(cookieParser());
 // }));
 
 /* ========================
+   HEALTH CHECK (hosting platforms and uptime monitors; no database access, no auth)
+======================== */
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ success: true, status: "ok", uptime: Math.round(process.uptime()) });
+});
+
+/* ========================
    TEST ROUTES
 ======================== */
 if (process.env.NODE_ENV === "test") {

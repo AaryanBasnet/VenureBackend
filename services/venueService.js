@@ -285,9 +285,11 @@ const updateVenueStatus = async (venueId, status, io) => {
     throw new AppError(`Status must be one of: ${VENUE_STATUSES.join(", ")}`, 400);
   }
 
+  // A venue that is no longer approved cannot stay featured on the landing page
+  const update = status === "approved" ? { status } : { status, isFeatured: false };
   const venue = await Venue.findOneAndUpdate(
     { _id: venueId, isDeleted: false },
-    { status },
+    update,
     { new: true, runValidators: true }
   ).populate("owner", "name");
   if (!venue) throw new AppError("Venue not found", 404);
