@@ -3,7 +3,9 @@ const { MongoMemoryServer } = require("mongodb-memory-server");
 
 const User = require("../model/user");
 const Venue = require("../model/venue");
-const { updateVenueStatus, toggleFeatured } = require("../services/venueService");
+const Booking = require("../model/booking");
+const Space = require("../model/space");
+const { updateVenueStatus, toggleFeatured, softDeleteVenue } = require("../services/venueService");
 
 let mongod;
 let owner;
@@ -48,6 +50,58 @@ describe("venue moderation", () => {
     await toggleFeatured(venue._id);
     await updateVenueStatus(venue._id, "approved", null);
     expect((await Venue.findById(venue._id)).isFeatured).toBe(true);
+  });
+
+  it("refuses to feature a venue that is pending or rejected, but always lets one be un-featured", async () => {
+    const venue = await makeVenue("Not Live Yet");
+    await Venue.updateOne({ _id: venue._id }, { status: "pending" });
+    await expect(toggleFeatured(venue._id)).rejects.toMatchObject({ statusCode: 400 });
+    await Venue.updateOne({ _id: venue._id }, { status: "rejected" });
+    await expect(toggleFeatured(venue._id)).rejects.toMatchObject({ statusCode: 400 });
+    expect((await Venue.findById(venue._id)).isFeatured).toBe(false);
+
+    // A venue that is somehow featured and no longer approved can still be taken off the landing page
+    await Venue.updateOne({ _id: venue._id }, { isFeatured: true });
+    expect((await toggleFeatured(venue._id)).isFeatured).toBe(false);
+  });
+
+  describe("deleting a venue that has bookings", () => {
+    const bookingFor = async (venue, { status = "confirmed", daysFromNow = 10 } = {}) => {
+      const space = await Space.create({ venue: venue._id, name: `Hall ${Math.random()}`, capacity: 100 });
+      const startTime = new Date(Date.now() + daysFromNow * 86400000);
+      return Booking.create({
+        customer: new mongoose.Types.ObjectId(),
+        venue: venue._id,
+        space: space._id,
+        startTime,
+        endTime: new Date(startTime.getTime() + 3 * 3600000),
+        numberOfGuests: 50,
+        eventType: "Wedding",
+        contactName: "Guest",
+        phoneNumber: "9800000000",
+        totalPrice: 100000,
+        depositAmount: 20000,
+        balanceAmount: 80000,
+        status,
+      });
+    };
+
+    it("is refused while an upcoming booking is confirmed, and leaves the venue listed", async () => {
+      const venue = await makeVenue("Has Bookings");
+      await bookingFor(venue);
+      await expect(softDeleteVenue(venue._id, owner._id, "VenueOwner")).rejects.toMatchObject({ statusCode: 409 });
+      await expect(softDeleteVenue(venue._id, owner._id, "Admin")).rejects.toMatchObject({ statusCode: 409 });
+      expect((await Venue.findById(venue._id)).isDeleted).toBe(false);
+    });
+
+    it("is allowed once the bookings are cancelled, completed or in the past", async () => {
+      const venue = await makeVenue("No Live Bookings");
+      await bookingFor(venue, { status: "cancelled" });
+      await bookingFor(venue, { status: "completed", daysFromNow: -5 });
+      await bookingFor(venue, { status: "confirmed", daysFromNow: -2 });
+      const deleted = await softDeleteVenue(venue._id, owner._id, "VenueOwner");
+      expect(deleted.isDeleted).toBe(true);
+    });
   });
 
   it("rejects an unknown status", async () => {

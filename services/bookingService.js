@@ -7,6 +7,7 @@ const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
 const PaymentAttempt = require("../model/paymentAttempt");
 const { ACTIVE_BOOKING_STATUSES } = require("./paymentService");
+const { notifyOwner, notifyCustomer } = require("./inquiryService");
 
 // How long an unfinished slot claim may live before MongoDB removes it
 const CLAIM_TTL_MS = 2 * 60 * 1000;
@@ -35,6 +36,31 @@ const recordRefundDue = async (depositPayment, bookingId, amountNPR, reason) => 
     status: "pending",
     verifiedAt: new Date(),
   });
+};
+
+// The calendar day of an event as people in Nepal read it
+const eventDay = (date) =>
+  new Date(date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kathmandu" });
+
+// A failed notification must never undo the booking or cancellation it is about
+const tryNotify = async (send) => {
+  try {
+    await send();
+  } catch (err) {
+    logger.error({ message: "Booking notification failed", error: err.message });
+  }
+};
+
+// Tells the venue owner a deposit was paid and the date is now theirs.
+const notifyBookingConfirmed = async (booking, io) => {
+  const venue = await Venue.findById(booking.venue).select("owner venueName");
+  if (!venue) return;
+  await tryNotify(() =>
+    notifyOwner(venue, `A deposit was paid and "${venue.venueName}" is booked for ${eventDay(booking.startTime)}.`, "/owner/bookings", io)
+  );
+  await tryNotify(() =>
+    notifyCustomer(booking.customer, `Your date at "${venue.venueName}" on ${eventDay(booking.startTime)} is confirmed.`, "/my-bookings", io)
+  );
 };
 
 /* ========================
@@ -201,7 +227,7 @@ const getMonthlyEarningsForOwner = async (ownerId) => {
    STATUS MODIFICATIONS
 ======================== */
 const findBookingWithVenue = async (bookingId) => {
-  const booking = await Booking.findById(bookingId).populate("venue", "owner");
+  const booking = await Booking.findById(bookingId).populate("venue", "owner venueName");
   if (!booking) throw new AppError("Booking not found", 404);
   return booking;
 };
@@ -219,7 +245,7 @@ const getRefundPercentage = (cancellationPolicy, daysUntilEvent) => {
 // Customer, venue owner, or an admin can cancel. Customer cancellation follows
 // the booking's snapshotted tiered refund schedule; owner/admin cancellation
 // always refunds the deposit in full (the venue failed to honor the deal).
-const cancelBooking = async (bookingId, user) => {
+const cancelBooking = async (bookingId, user, io) => {
   const booking = await findBookingWithVenue(bookingId);
 
   const isCustomer = booking.customer.toString() === user._id.toString();
@@ -248,6 +274,25 @@ const cancelBooking = async (bookingId, user) => {
 
   booking.status = "cancelled";
   await booking.save();
+
+  // Tell the other side: the owner when the customer cancels, the customer when the venue (or an admin) does
+  const venueName = booking.venue?.venueName;
+  if (venueName) {
+    if (isCustomer) {
+      await tryNotify(() =>
+        notifyOwner(booking.venue, `A booking at "${venueName}" on ${eventDay(booking.startTime)} was cancelled by the customer.`, "/owner/bookings", io)
+      );
+    } else {
+      await tryNotify(() =>
+        notifyCustomer(
+          booking.customer,
+          `Your booking at "${venueName}" on ${eventDay(booking.startTime)} was cancelled by the venue. Your full deposit will be refunded.`,
+          "/my-bookings",
+          io
+        )
+      );
+    }
+  }
   return booking;
 };
 
@@ -352,6 +397,7 @@ const getTopVenuesByBooking = async () => {
 
 module.exports = {
   createBookingFromQuotation,
+  notifyBookingConfirmed,
   getBookingsForOwner,
   getMonthlyEarningsForOwner,
   cancelBooking,

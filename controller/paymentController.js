@@ -12,6 +12,8 @@ exports.verifyEsewa = asyncHandler(async (req, res) => {
     req.user._id
   );
 
+  await bookingService.notifyBookingConfirmed(booking, req.app.get("io"));
+
   res.status(201).json({
     success: true,
     message: "Booking confirmed successfully",

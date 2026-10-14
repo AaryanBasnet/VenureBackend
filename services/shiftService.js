@@ -8,11 +8,16 @@ const SHIFT_DEFAULTS = {
   full_day: { startTime: "10:00", endTime: "22:00" },
 };
 
+// Shift hours are Nepal time (UTC+5:45, no daylight saving) wherever the server runs: a host in UTC
+// must still turn "10:00" into 10:00 in Kathmandu.
+const NEPAL_OFFSET_MS = (5 * 60 + 45) * 60 * 1000;
+
 const parseHHMM = (date, hhmm) => {
   const [hours, minutes] = hhmm.split(":").map(Number);
-  const resolved = new Date(date);
-  resolved.setHours(hours, minutes, 0, 0);
-  return resolved;
+  // The calendar day in Kathmandu that this instant falls on
+  const nepalDay = new Date(new Date(date).getTime() + NEPAL_OFFSET_MS);
+  const utcAtNepalClock = Date.UTC(nepalDay.getUTCFullYear(), nepalDay.getUTCMonth(), nepalDay.getUTCDate(), hours, minutes);
+  return new Date(utcAtNepalClock - NEPAL_OFFSET_MS);
 };
 
 /**

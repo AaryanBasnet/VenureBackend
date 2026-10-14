@@ -1,10 +1,12 @@
 const Quotation = require("../model/quotation");
 const Inquiry = require("../model/inquiry");
 const Space = require("../model/space");
+const Booking = require("../model/booking");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
 const { resolveShiftTimes } = require("./shiftService");
 const { notifyOwner, notifyCustomer } = require("./inquiryService");
+const { ACTIVE_BOOKING_STATUSES } = require("./paymentService");
 
 const DEPOSIT_PERCENTAGE_MIN = 10;
 const DEPOSIT_PERCENTAGE_MAX = 50;
@@ -54,6 +56,15 @@ const resolveLineItems = (lineItems, numberOfGuests) => {
   return { lineItems: resolved, totalPrice };
 };
 
+// Is another booking already holding this space during these hours?
+const slotIsTaken = ({ space, startTime, endTime }) =>
+  Booking.exists({
+    space,
+    status: { $in: ACTIVE_BOOKING_STATUSES },
+    startTime: { $lt: endTime },
+    endTime: { $gt: startTime },
+  });
+
 const expireIfStale = async (quotation) => {
   if (quotation.status === "sent" && quotation.validUntil < new Date()) {
     quotation.status = "expired";
@@ -81,6 +92,11 @@ const createQuotation = async (inquiryId, ownerId, payload, io) => {
   const { startTime, endTime } = resolveShiftTimes(new Date(payload.eventDate), payload.shift, space);
   if (startTime <= new Date()) {
     throw new AppError("The quoted event date must be in the future", 400);
+  }
+
+  // Do not quote a date the space has already been booked for
+  if (await slotIsTaken({ space: space._id, startTime, endTime })) {
+    throw new AppError("This space is already booked on that date and shift", 409);
   }
 
   const { lineItems, totalPrice } = resolveLineItems(payload.lineItems, payload.numberOfGuests);
@@ -171,6 +187,10 @@ const acceptQuotation = async (quotationId, customerId) => {
   }
 
   if (quotation.status === "sent") {
+    // Check before accepting: a customer must not be left holding an accepted quotation for a slot someone else has booked
+    if (await slotIsTaken(quotation)) {
+      throw new AppError("This space is already booked during this time slot", 409);
+    }
     quotation.status = "accepted";
     quotation.respondedAt = new Date();
     await quotation.save();

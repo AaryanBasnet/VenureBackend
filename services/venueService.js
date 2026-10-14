@@ -128,6 +128,19 @@ const softDeleteVenue = async (venueId, userId, userRole) => {
   const venue = await Venue.findOne(query);
   if (!venue) throw new AppError("Venue not found or unauthorized", 404);
 
+  // Customers have paid deposits for these dates: the venue must cancel them (which refunds) before it can disappear
+  const upcoming = await Booking.countDocuments({
+    venue: venue._id,
+    status: { $in: ["pending_deposit", "confirmed"] },
+    endTime: { $gt: new Date() },
+  });
+  if (upcoming > 0) {
+    throw new AppError(
+      `This venue has ${upcoming} upcoming ${upcoming === 1 ? "booking" : "bookings"}. Cancel ${upcoming === 1 ? "it" : "them"} first, then delete the venue.`,
+      409
+    );
+  }
+
   venue.isDeleted = true;
   await venue.save();
   
@@ -309,6 +322,11 @@ const updateVenueStatus = async (venueId, status, io) => {
 const toggleFeatured = async (venueId) => {
   const venue = await Venue.findOne({ _id: venueId, isDeleted: false });
   if (!venue) throw new AppError("Venue not found", 404);
+
+  // Only a live venue can go on the landing page. Un-featuring is always allowed.
+  if (!venue.isFeatured && venue.status !== "approved") {
+    throw new AppError("Only approved venues can be featured", 400);
+  }
 
   venue.isFeatured = !venue.isFeatured;
   await venue.save();
