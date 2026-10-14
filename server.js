@@ -40,8 +40,8 @@ if (process.env.JWT_SECRET === process.env.REFRESH_TOKEN_SECRET) {
   process.exit(1);
 }
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  logger.warn("STRIPE_SECRET_KEY is not set: payments and bookings will be unavailable");
+if (process.env.NODE_ENV === "production" && (!process.env.ESEWA_MERCHANT_CODE || !process.env.ESEWA_SECRET_KEY)) {
+  logger.warn("ESEWA_MERCHANT_CODE / ESEWA_SECRET_KEY are not set: deposits will be unavailable");
 }
 
 if (!process.env.GOOGLE_CLIENT_ID) {

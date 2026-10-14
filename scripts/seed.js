@@ -5,6 +5,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const User = require('../model/user.js');
 const Venue = require('../model/venue.js');
+const Space = require('../model/space.js');
 const authService = require('../services/authService.js');
 const logger = require('../utils/logger');
 
@@ -19,8 +20,8 @@ const img = (id) => ({
 const SAMPLE_VENUES = [
   {
     venueName: 'Grand Ballroom',
-    location: { address: '123 University Way', city: 'Coventry', state: 'West Midlands', country: 'United Kingdom' },
-    coords: [-1.5616, 52.4068],
+    location: { address: 'Kamaladi Marg', city: 'Kathmandu', state: 'Bagmati', country: 'Nepal' },
+    coords: [85.3206, 27.7088],
     category: 'intimate-halls',
     capacity: 300,
     pricePerHour: 500,
@@ -67,9 +68,14 @@ const SAMPLE_VENUES = [
 ];
 
 const ensureUser = async ({ name, email, password, role }) => {
-  const existing = await User.findOne({ email });
-  if (existing) return existing;
-  return authService.register({ name, email, password, role });
+  const user = (await User.findOne({ email })) ?? (await authService.register({ name, email, password, role }));
+  // authService.register only creates Customers and VenueOwners (admins can never self-register),
+  // so promote the seeded admin directly. Without this the "admin" could not approve any venue.
+  if (role === 'Admin' && user.role !== 'Admin') {
+    await User.updateOne({ _id: user._id }, { role: 'Admin' });
+    user.role = 'Admin';
+  }
+  return user;
 };
 
 const seedData = async () => {
@@ -80,6 +86,7 @@ const seedData = async () => {
     if (RESET) {
       await User.deleteMany({});
       await Venue.deleteMany({});
+      await Space.deleteMany({});
       logger.info('Seeding: Database cleared.');
     }
 
@@ -88,8 +95,8 @@ const seedData = async () => {
     logger.info('Seeding: Admin and owner ready.');
 
     // Upsert by name so re-running never creates duplicates
-    for (const { coords, ...venue } of SAMPLE_VENUES) {
-      await Venue.findOneAndUpdate(
+    for (const { coords, capacity, pricePerHour, ...venue } of SAMPLE_VENUES) {
+      const saved = await Venue.findOneAndUpdate(
         { venueName: venue.venueName, owner: owner._id },
         {
           ...venue,
@@ -99,6 +106,13 @@ const seedData = async () => {
           isDeleted: false,
         },
         { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+      );
+
+      // capacity/pricePerHour now live on Space, not Venue — one default space per sample venue.
+      await Space.findOneAndUpdate(
+        { venue: saved._id, name: 'Main Space' },
+        { venue: saved._id, name: 'Main Space', capacity, indicativePricePerHour: pricePerHour, isActive: true },
+        { upsert: true, setDefaultsOnInsert: true, runValidators: true }
       );
     }
 

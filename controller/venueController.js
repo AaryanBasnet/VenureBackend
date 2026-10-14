@@ -15,6 +15,12 @@ exports.getAllApprovedVenues = asyncHandler(async (req, res) => {
   });
 });
 
+exports.getVenueAvailability = asyncHandler(async (req, res) => {
+  const booked = await venueService.getVenueAvailability(req.params.venueId, req.query);
+
+  res.status(200).json({ success: true, data: booked });
+});
+
 exports.getVenueById = asyncHandler(async (req, res) => {
   const venue = await venueService.getVenueById(req.params.id);
 

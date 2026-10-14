@@ -32,7 +32,7 @@ const getFavoriteVenues = async (userId) => {
   const user = await User.findById(userId).populate({
     path: "favorites",
     match: { isDeleted: false, status: "approved" }, // Only populate active, approved venues
-    select: "venueName location averageRating venueImages pricePerHour", 
+    select: "venueName location averageRating venueImages",
   });
 
   if (!user) throw new AppError("User not found", 404);

@@ -4,18 +4,26 @@ const paymentController = require("../controller/paymentController");
 
 const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
 const validate = require("../middleware/validate");
-const { initiatePaymentSchema } = require("../validators/paymentValidators");
+const { initiateDepositSchema, verifyEsewaSchema } = require("../validators/paymentValidators");
 const { paymentLimiter } = require("../middleware/rateLimiters");
 
 // Protect all payment routes
 router.use(protectRoute);
 
 router.post(
-  "/initiate",
+  "/initiate-deposit",
   paymentLimiter,
   authorizeRoles("Customer", "Admin"),
-  validate(initiatePaymentSchema, "body"),
-  paymentController.createPaymentIntent
+  validate(initiateDepositSchema, "body"),
+  paymentController.initiateDeposit
+);
+
+router.post(
+  "/esewa/verify",
+  paymentLimiter,
+  authorizeRoles("Customer", "Admin"),
+  validate(verifyEsewaSchema, "body"),
+  paymentController.verifyEsewa
 );
 
 module.exports = router;

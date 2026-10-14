@@ -6,30 +6,32 @@ const AppError = require("../utils/AppError");
 /* ========================
    CREATE / VERIFY
 ======================== */
-const addReview = async (venueId, userId, payload) => {
+const addReview = async (venueId, userId, bookingId, payload) => {
   const venue = await Venue.findById(venueId);
   if (!venue) throw new AppError("Venue not found", 404);
 
-  // 1. Prevent duplicate reviews
-  const existingReview = await Review.findOne({ venue: venueId, user: userId });
-  if (existingReview) {
-    throw new AppError("You have already reviewed this venue", 400);
-  }
-
-  // 2. ENTERPRISE CHECK: Did this user actually complete a booking here?
-  const validBooking = await Booking.findOne({
+  // 1. Did this user actually complete this specific booking at this venue?
+  const booking = await Booking.findOne({
+    _id: bookingId,
     venue: venueId,
     customer: userId,
-    status: "completed", // Or "approved" depending on your exact business flow
+    status: "completed",
   });
+  if (!booking) {
+    throw new AppError("You can only review a venue after a completed booking there.", 403);
+  }
 
-  if (!validBooking) {
-    throw new AppError("You can only review venues after a completed booking.", 403);
+  // 2. Prevent duplicate reviews for the same booking (one booking, one review —
+  // a customer who books the same venue twice may leave two honest reviews)
+  const existingReview = await Review.findOne({ booking: bookingId, user: userId });
+  if (existingReview) {
+    throw new AppError("You have already reviewed this booking", 400);
   }
 
   // 3. Create the review (Mongoose post-save hook will auto-update the venue's average)
   const review = await Review.create({
     venue: venueId,
+    booking: bookingId,
     user: userId,
     ...payload,
   });

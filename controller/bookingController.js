@@ -2,20 +2,6 @@ const asyncHandler = require("../utils/asyncHandler");
 const bookingService = require("../services/bookingService");
 
 /* ========================
-   CREATE BOOKING
-======================== */
-const createBooking = asyncHandler(async (req, res) => {
-  // req.body is already perfectly formatted and validated by Zod at this point
-  const newBooking = await bookingService.createBooking(req.body, req.user._id);
-
-  res.status(201).json({
-    success: true,
-    message: "Booking created successfully",
-    data: newBooking,
-  });
-});
-
-/* ========================
    CUSTOMER ENDPOINTS
 ======================== */
 const getBookingsForCustomer = asyncHandler(async (req, res) => {
@@ -66,25 +52,35 @@ const getTotalBookingsForOwner = asyncHandler(async (req, res) => {
   });
 });
 
-/* ========================
-   STATUS MODIFICATIONS
-======================== */
-const approveBooking = asyncHandler(async (req, res) => {
-  const booking = await bookingService.approveBooking(req.params.id, req.user);
+const settleBalance = asyncHandler(async (req, res) => {
+  const booking = await bookingService.settleBalance(req.params.id, req.user._id, req.body);
 
   res.status(200).json({
     success: true,
-    message: "Booking approved successfully",
+    message: "Balance recorded as settled",
     data: booking,
   });
 });
 
+/* ========================
+   STATUS MODIFICATIONS
+======================== */
 const cancelBooking = asyncHandler(async (req, res) => {
   const booking = await bookingService.cancelBooking(req.params.id, req.user);
 
   res.status(200).json({
     success: true,
     message: "Booking cancelled successfully",
+    data: booking,
+  });
+});
+
+const completeBooking = asyncHandler(async (req, res) => {
+  const booking = await bookingService.completeBooking(req.params.id, req.user);
+
+  res.status(200).json({
+    success: true,
+    message: "Booking marked as completed",
     data: booking,
   });
 });
@@ -111,14 +107,14 @@ const getTopVenuesByBooking = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  createBooking,
   getBookingsForCustomer,
   getCustomerBookingCount,
   getBookingsForOwner,
   getMonthlyEarningsForOwner,
   getTotalBookingsForOwner,
-  approveBooking,
+  settleBalance,
   cancelBooking,
+  completeBooking,
   getTotalBookings,
   getTopVenuesByBooking,
 };

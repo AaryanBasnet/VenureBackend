@@ -8,11 +8,18 @@ const reviewSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    venue: { // 
+    venue: { //
       type: mongoose.Schema.Types.ObjectId,
       ref: "Venue",
       required: true,
       index: true, // Fast lookups for venue reviews
+    },
+    // Which completed stay this review is for — lets the same customer leave an
+    // honest review for each separate booking rather than one review per venue ever.
+    booking: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Booking",
+      required: true,
     },
     rating: {
       type: Number,
@@ -69,12 +76,14 @@ reviewSchema.statics.calculateAverageRating = async function (venueId) {
   }
 };
 
-// Call the calculator after a review is saved
-reviewSchema.post("save", function () {
-  this.constructor.calculateAverageRating(this.venue);
+// Call the calculator after a review is saved. Must be awaited — otherwise
+// save() resolves before the venue's rating actually updates.
+reviewSchema.post("save", async function () {
+  await this.constructor.calculateAverageRating(this.venue);
 });
 
-// Prevent duplicate reviews from the same user on the same venue
-reviewSchema.index({ venue: 1, user: 1 }, { unique: true });
+// Prevent duplicate reviews from the same user on the same booking — a customer
+// who books the same venue twice can leave two honest reviews.
+reviewSchema.index({ booking: 1, user: 1 }, { unique: true });
 
 module.exports = mongoose.model("Review", reviewSchema);

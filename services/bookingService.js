@@ -1,167 +1,161 @@
 const Booking = require("../model/booking");
+const Payment = require("../model/payment");
+const Quotation = require("../model/quotation");
+const Inquiry = require("../model/inquiry");
 const Venue = require("../model/venue");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
-const { getStripe } = require("../utils/stripe");
-const { quoteBooking, nprToUsdCents } = require("./pricingService");
+const PaymentAttempt = require("../model/paymentAttempt");
 const { ACTIVE_BOOKING_STATUSES } = require("./paymentService");
 
 // How long an unfinished slot claim may live before MongoDB removes it
 const CLAIM_TTL_MS = 2 * 60 * 1000;
 
-const sameInstant = (a, b) => new Date(a).getTime() === new Date(b).getTime();
+// Snapshotted onto every Booking at creation time so cancellation terms stay
+// auditable even if the platform-wide policy changes later.
+const CANCELLATION_REFUND_TIERS = [
+  { minDaysBefore: 30, refundPercentage: 100 },
+  { minDaysBefore: 15, refundPercentage: 75 },
+  { minDaysBefore: 7, refundPercentage: 50 },
+  { minDaysBefore: 0, refundPercentage: 0 },
+];
 
-/**
- * Proves a Stripe PaymentIntent was paid by this customer, for this venue and slot,
- * for exactly the server-calculated amount.
- */
-const assertPaymentMatchesBooking = (paymentIntent, { customerId, venueId, quote }) => {
-  if (paymentIntent.status !== "succeeded") {
-    throw new AppError("Payment has not been successfully completed", 400);
-  }
-
-  const meta = paymentIntent.metadata || {};
-  const matches =
-    meta.userId === customerId.toString() &&
-    meta.venueId === venueId.toString() &&
-    sameInstant(meta.startTime, quote.start) &&
-    sameInstant(meta.endTime, quote.end) &&
-    paymentIntent.currency === "usd" &&
-    paymentIntent.amount_received === nprToUsdCents(quote.totalPrice);
-
-  if (!matches) {
-    logger.warn({
-      message: "Payment does not match booking",
-      customerId: customerId.toString(),
-      paymentIntentId: paymentIntent.id,
-    });
-    throw new AppError("Payment does not match this booking.", 400);
-  }
-};
-
-// Best effort: a customer must never be charged for a booking we could not create
-const refundPayment = async (paymentIntentId, reason) => {
-  try {
-    await getStripe().refunds.create({ payment_intent: paymentIntentId });
-    logger.warn({ message: "Payment refunded after failed booking", paymentIntentId, reason });
-  } catch (err) {
-    logger.error({ message: "AUTOMATIC REFUND FAILED - manual refund required", paymentIntentId, reason, error: err.message });
-  }
+// eSewa has no refund API we can call, so refunds are recorded as "pending" and paid back
+// by Venure outside the app. A customer must never be left without a record of what they are owed.
+const recordRefundDue = async (depositPayment, bookingId, amountNPR, reason) => {
+  logger.warn({ message: "Refund due to customer", transactionId: depositPayment.transactionId, amountNPR, reason });
+  return Payment.create({
+    booking: bookingId,
+    type: "refund",
+    provider: depositPayment.provider,
+    transactionId: `refund-${depositPayment.transactionId}`,
+    amountReceived: -amountNPR,
+    currency: depositPayment.currency,
+    amountNPR: -amountNPR,
+    status: "pending",
+    verifiedAt: new Date(),
+  });
 };
 
 /* ========================
-   CORE BOOKING CREATION
+   CORE BOOKING CREATION (post quotation-acceptance + deposit payment)
 ======================== */
-const createBooking = async (bookingData, customerId) => {
-  const {
-    venue: venueId,
-    startTime,
-    endTime,
-    numberOfGuests,
-    selectedAddons = [],
-    totalPrice: frontendPrice, // Only used to detect a stale price on the client
-    paymentIntentId,
-    paymentDetails,
-    eventType,
-    specialRequirements,
-    contactName,
-    phoneNumber,
-  } = bookingData;
-
-  const finalPaymentIntentId = paymentIntentId || paymentDetails?.paymentIntentId;
-  if (!finalPaymentIntentId) throw new AppError("Payment intent ID is missing", 400);
-
-  // 1. A payment can only ever back one booking
-  const alreadyUsed = await Booking.exists({ "paymentDetails.transactionId": finalPaymentIntentId });
+const createBookingFromQuotation = async ({ quotationId, transactionId, amountNPR }, customerId) => {
+  // A payment can only ever back one booking
+  const alreadyUsed = await Payment.exists({ transactionId });
   if (alreadyUsed) throw new AppError("This payment has already been used for a booking.", 409);
 
-  // 2. Trusted price & slot validation
-  const venue = await Venue.findById(venueId);
-  if (!venue) throw new AppError("Venue not found", 404);
-
-  const quote = quoteBooking({ venue, startTime, endTime, numberOfGuests, addons: selectedAddons });
-
-  if (frontendPrice !== undefined && Math.abs(quote.totalPrice - frontendPrice) > 1) {
-    logger.warn({ message: "Booking price mismatch", customerId: customerId.toString() });
-    throw new AppError("Price mismatch detected. Booking rejected.", 400);
+  const quotation = await Quotation.findById(quotationId).populate("inquiry");
+  if (!quotation) throw new AppError("Quotation not found", 404);
+  if (quotation.inquiry.customer.toString() !== customerId.toString()) {
+    throw new AppError("You do not have permission to complete this booking.", 403);
+  }
+  if (quotation.status !== "accepted") {
+    throw new AppError(`A ${quotation.status} quotation cannot be booked`, 400);
+  }
+  if (amountNPR !== quotation.depositAmount) {
+    throw new AppError("Payment does not match this booking.", 400);
   }
 
-  // 3. Verify the Stripe payment belongs to exactly this booking
-  const paymentIntent = await getStripe().paymentIntents.retrieve(finalPaymentIntentId);
-  assertPaymentMatchesBooking(paymentIntent, { customerId, venueId, quote });
-
-  // 4. Claim the slot, then verify nobody else holds it.
+  // Claim the slot, then verify nobody else holds it.
   // A plain "check, then insert" lets two simultaneous requests both pass the check.
   // Instead we insert a claim first and only then look for other bookings: whichever
   // request inserts second always sees the first, so two can never both succeed.
-  // (If both claim at the same instant they can both lose; the customers are refunded
-  // and can retry. Losing safely beats double-booking.)
-  let claim;
+  let claim, paymentDoc;
   try {
     claim = await Booking.create({
+      inquiry: quotation.inquiry._id,
+      quotation: quotation._id,
       customer: customerId,
-      venue: venueId,
-      startTime: quote.start,
-      endTime: quote.end,
-      numberOfGuests,
-      eventType,
-      specialRequirements,
-      contactName,
-      phoneNumber,
-      selectedAddons: quote.selectedAddons,
-      totalPrice: quote.totalPrice,
-      paymentDetails: {
-        provider: "stripe",
-        transactionId: paymentIntent.id,
-        amountReceived: paymentIntent.amount_received,
-        currency: paymentIntent.currency,
-        status: paymentIntent.status,
-      },
-      status: "pending_payment",
-      holdExpiresAt: new Date(Date.now() + CLAIM_TTL_MS),
+      venue: quotation.venue,
+      space: quotation.space,
+      eventDate: quotation.eventDate,
+      shift: quotation.shift,
+      startTime: quotation.startTime,
+      endTime: quotation.endTime,
+      numberOfGuests: quotation.numberOfGuests,
+      eventType: quotation.inquiry.eventType,
+      specialRequirements: quotation.inquiry.message,
+      contactName: quotation.inquiry.contactName,
+      phoneNumber: quotation.inquiry.phoneNumber,
+      totalPrice: quotation.totalPrice,
+      depositAmount: quotation.depositAmount,
+      balanceAmount: quotation.balanceAmount,
+      cancellationPolicy: CANCELLATION_REFUND_TIERS,
+      status: "pending_deposit",
+      holdClaimExpiresAt: new Date(Date.now() + CLAIM_TTL_MS),
+    });
+
+    paymentDoc = await Payment.create({
+      booking: claim._id,
+      type: "deposit",
+      provider: "esewa",
+      transactionId,
+      amountReceived: amountNPR,
+      currency: "npr",
+      amountNPR,
+      status: "succeeded",
+      verifiedAt: new Date(),
     });
 
     const conflict = await Booking.exists({
       _id: { $ne: claim._id },
-      venue: venueId,
+      space: quotation.space,
       status: { $in: ACTIVE_BOOKING_STATUSES },
-      startTime: { $lt: quote.end },
-      endTime: { $gt: quote.start },
+      startTime: { $lt: quotation.endTime },
+      endTime: { $gt: quotation.startTime },
     });
     if (conflict) {
-      throw new AppError("The venue is already booked during this time slot", 409);
+      throw new AppError("The space is already booked during this time slot", 409);
     }
 
-    return await Booking.findByIdAndUpdate(
+    const booking = await Booking.findByIdAndUpdate(
       claim._id,
-      { status: "booked", $unset: { holdExpiresAt: 1 } },
+      { status: "confirmed", $unset: { holdClaimExpiresAt: 1 } },
       { new: true }
     );
+
+    await Inquiry.findByIdAndUpdate(quotation.inquiry._id, { booking: booking._id });
+
+    return booking;
   } catch (error) {
-    if (claim) await Booking.deleteOne({ _id: claim._id, status: "pending_payment" });
+    if (paymentDoc) await Payment.deleteOne({ _id: paymentDoc._id });
+    if (claim) await Booking.deleteOne({ _id: claim._id, status: "pending_deposit" });
 
     // Duplicate transactionId means a concurrent request already booked with this payment
     if (error.code === 11000) {
       throw new AppError("This payment has already been used for a booking.", 409);
     }
-    await refundPayment(paymentIntent.id, error.message);
+    // The customer has paid but we could not book: mark the attempt so the deposit is refunded.
+    await PaymentAttempt.updateOne({ transactionCode: transactionId }, { status: "refund_due" });
+    logger.error({ message: "REFUND REQUIRED: deposit paid but booking failed", transactionId, quotationId: String(quotationId), reason: error.message });
     if (error.isOperational) {
-      throw new AppError(`${error.message}. Your payment has been refunded.`, error.statusCode);
+      throw new AppError(`${error.message}. Your deposit will be refunded; Venure will contact you.`, error.statusCode);
     }
     logger.error({ message: "Booking creation failed", error: error.message });
-    throw new AppError("We could not complete your booking. Your payment has been refunded.", 500);
+    throw new AppError("We could not complete your booking. Your deposit will be refunded; Venure will contact you.", 500);
   }
 };
 
 /* ========================
    OWNER DASHBOARD LOGIC
 ======================== */
+const autoCompletePastBookings = async (filter = {}) => {
+  await Booking.updateMany(
+    { ...filter, status: "confirmed", endTime: { $lt: new Date() } },
+    { status: "completed" }
+  );
+};
+
 const getBookingsForOwner = async (ownerId) => {
   const ownerVenues = await Venue.find({ owner: ownerId }).select("_id");
   const venueIds = ownerVenues.map((v) => v._id);
 
+  await autoCompletePastBookings({ venue: { $in: venueIds } });
+
   return await Booking.find({ venue: { $in: venueIds } })
     .populate("venue", "venueName location")
+    .populate("space", "name")
     .populate("customer", "name email");
 };
 
@@ -173,11 +167,13 @@ const getMonthlyEarningsForOwner = async (ownerId) => {
   const startOfYear = new Date(currentYear, 0, 1);
   const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59);
 
+  // Sums totalPrice (the full "booked value"), not just the eSewa-verified
+  // deposit — most of the contract value never flows through Venure.
   const earnings = await Booking.aggregate([
     {
       $match: {
         venue: { $in: venueIds },
-        status: { $in: ["booked", "approved", "completed"] },
+        status: { $in: ["confirmed", "completed"] },
         startTime: { $gte: startOfYear, $lte: endOfYear },
       },
     },
@@ -213,39 +209,76 @@ const findBookingWithVenue = async (bookingId) => {
 const isVenueOwner = (booking, userId) =>
   booking.venue?.owner && booking.venue.owner.toString() === userId.toString();
 
-// Only the owner of the booked venue can approve, and only a paid booking
-const approveBooking = async (bookingId, user) => {
-  const booking = await findBookingWithVenue(bookingId);
-
-  if (!isVenueOwner(booking, user._id)) {
-    throw new AppError("You do not have permission to modify this booking.", 403);
-  }
-  if (booking.status !== "booked") {
-    throw new AppError(`A ${booking.status} booking cannot be approved`, 400);
-  }
-
-  booking.status = "approved";
-  await booking.save();
-  return booking;
+const getRefundPercentage = (cancellationPolicy, daysUntilEvent) => {
+  const tiers = cancellationPolicy?.length ? cancellationPolicy : CANCELLATION_REFUND_TIERS;
+  const sorted = [...tiers].sort((a, b) => b.minDaysBefore - a.minDaysBefore);
+  const tier = sorted.find((t) => daysUntilEvent >= t.minDaysBefore);
+  return tier ? tier.refundPercentage : 0;
 };
 
-// The customer, the venue owner, or an admin can cancel an upcoming booking
+// Customer, venue owner, or an admin can cancel. Customer cancellation follows
+// the booking's snapshotted tiered refund schedule; owner/admin cancellation
+// always refunds the deposit in full (the venue failed to honor the deal).
 const cancelBooking = async (bookingId, user) => {
   const booking = await findBookingWithVenue(bookingId);
 
   const isCustomer = booking.customer.toString() === user._id.toString();
   const isAdmin = user.role === "Admin";
-  if (!isCustomer && !isAdmin && !isVenueOwner(booking, user._id)) {
+  const isOwner = isVenueOwner(booking, user._id);
+  if (!isCustomer && !isAdmin && !isOwner) {
     throw new AppError("You do not have permission to modify this booking.", 403);
   }
-  if (!["pending_payment", "booked", "approved"].includes(booking.status)) {
+  if (!["pending_deposit", "confirmed"].includes(booking.status)) {
     throw new AppError(`A ${booking.status} booking cannot be cancelled`, 400);
   }
-  if (!isAdmin && booking.startTime.getTime() <= Date.now()) {
+  if (isCustomer && booking.startTime.getTime() <= Date.now()) {
     throw new AppError("Past or ongoing bookings cannot be cancelled", 400);
   }
 
+  const daysUntilEvent = (booking.startTime.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+  const refundPercentage = isCustomer ? getRefundPercentage(booking.cancellationPolicy, daysUntilEvent) : 100;
+  const refundAmount = Math.round(booking.depositAmount * (refundPercentage / 100));
+
+  if (refundAmount > 0) {
+    const depositPayment = await Payment.findOne({ booking: booking._id, type: "deposit" });
+    if (depositPayment?.transactionId) {
+      await recordRefundDue(depositPayment, booking._id, refundAmount, "booking cancelled");
+    }
+  }
+
   booking.status = "cancelled";
+  await booking.save();
+  return booking;
+};
+
+const completeBooking = async (bookingId, user) => {
+  const booking = await findBookingWithVenue(bookingId);
+  if (!isVenueOwner(booking, user._id) && user.role !== "Admin") {
+    throw new AppError("You do not have permission to modify this booking.", 403);
+  }
+  if (booking.status !== "confirmed") {
+    throw new AppError(`A ${booking.status} booking cannot be marked complete`, 400);
+  }
+
+  booking.status = "completed";
+  await booking.save();
+  return booking;
+};
+
+// The balance is settled outside the app (cash/bank transfer); this just records it.
+const settleBalance = async (bookingId, ownerId, { method, note }) => {
+  const booking = await findBookingWithVenue(bookingId);
+  if (!isVenueOwner(booking, ownerId)) {
+    throw new AppError("You do not have permission to modify this booking.", 403);
+  }
+  if (booking.balanceSettled) {
+    throw new AppError("The balance for this booking has already been recorded as settled", 400);
+  }
+
+  booking.balanceSettled = true;
+  booking.balanceSettledAt = new Date();
+  booking.balanceSettledMethod = note ? `${method} - ${note}` : method;
+  booking.balanceSettledBy = ownerId;
   await booking.save();
   return booking;
 };
@@ -254,7 +287,11 @@ const cancelBooking = async (bookingId, user) => {
    AGGREGATIONS & COUNTS
 ======================== */
 const getCustomerBookings = async (customerId) => {
-  return await Booking.find({ customer: customerId }).populate("venue", "venueName location venueImages");
+  await autoCompletePastBookings({ customer: customerId });
+
+  return await Booking.find({ customer: customerId })
+    .populate("venue", "venueName location venueImages")
+    .populate("space", "name");
 };
 
 const getCustomerBookingCount = async (customerId) => {
@@ -265,7 +302,7 @@ const getTotalBookingsForOwner = async (ownerId) => {
   const ownerVenues = await Venue.find({ owner: ownerId }).select("_id");
   return await Booking.countDocuments({
     venue: { $in: ownerVenues.map((v) => v._id) },
-    status: { $in: ["booked", "approved", "completed"] },
+    status: { $in: ["confirmed", "completed"] },
   });
 };
 
@@ -275,7 +312,7 @@ const getGlobalTotalBookings = async () => {
 
 const getTopVenuesByBooking = async () => {
   return await Booking.aggregate([
-    { $match: { status: { $in: ["booked", "approved", "completed"] } } },
+    { $match: { status: { $in: ["confirmed", "completed"] } } },
     { $group: { _id: "$venue", bookingCount: { $sum: 1 } } },
     { $sort: { bookingCount: -1 } },
     { $limit: 5 },
@@ -290,13 +327,23 @@ const getTopVenuesByBooking = async () => {
     { $unwind: "$venueDetails" },
     { $match: { "venueDetails.status": "approved", "venueDetails.isDeleted": false } },
     {
+      $lookup: {
+        from: "spaces",
+        let: { venueId: "$_id" },
+        pipeline: [
+          { $match: { $expr: { $and: [{ $eq: ["$venue", "$$venueId"] }, { $eq: ["$isActive", true] }] } } },
+        ],
+        as: "spaceDetails",
+      },
+    },
+    {
       $project: {
         _id: 0,
         venueId: "$venueDetails._id",
         venueName: "$venueDetails.venueName",
         location: "$venueDetails.location",
         averageRating: "$venueDetails.averageRating",
-        pricePerHour: "$venueDetails.pricePerHour",
+        startingPricePerHour: { $min: "$spaceDetails.indicativePricePerHour" },
         bookingCount: 1,
       },
     },
@@ -304,14 +351,18 @@ const getTopVenuesByBooking = async () => {
 };
 
 module.exports = {
-  createBooking,
+  createBookingFromQuotation,
   getBookingsForOwner,
   getMonthlyEarningsForOwner,
-  approveBooking,
   cancelBooking,
+  completeBooking,
+  settleBalance,
+  autoCompletePastBookings,
   getCustomerBookings,
   getCustomerBookingCount,
   getTotalBookingsForOwner,
   getGlobalTotalBookings,
   getTopVenuesByBooking,
+  CANCELLATION_REFUND_TIERS,
+  getRefundPercentage,
 };

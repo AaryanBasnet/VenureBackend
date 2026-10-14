@@ -1,4 +1,6 @@
 ﻿const Venue = require("../model/venue");
+const Space = require("../model/space");
+const Booking = require("../model/booking");
 const Notification = require("../model/notification"); // Standardized capitalization
 const AppError = require("../utils/AppError");
 const { cloudinary } = require("../middleware/uploadMiddleware");
@@ -136,14 +138,42 @@ const softDeleteVenue = async (venueId, userId, userRole) => {
 /* ========================
    USER / DISCOVERY
 ======================== */
+// Venues no longer carry a capacity of their own: it lives on their spaces. Cards show the largest
+// space and how many there are, so attach those to a list of (lean) venues.
+const attachCapacity = async (venues) => {
+  if (venues.length === 0) return venues;
+  const rows = await Space.aggregate([
+    { $match: { venue: { $in: venues.map((v) => v._id) }, isActive: true } },
+    { $group: { _id: "$venue", maxCapacity: { $max: "$capacity" }, spaceCount: { $sum: 1 } } },
+  ]);
+  const byVenue = new Map(rows.map((r) => [String(r._id), r]));
+  return venues.map((v) => ({
+    ...v,
+    maxCapacity: byVenue.get(String(v._id))?.maxCapacity ?? 0,
+    spaceCount: byVenue.get(String(v._id))?.spaceCount ?? 0,
+  }));
+};
+
 const getApprovedVenues = async (filters) => {
-  const { search, city, category, lng, lat, radius } = filters;
+  const { search, city, category, lng, lat, radius, guests, amenities, sort } = filters;
   const { page, limit, skip } = toPaging(filters);
   const query = { status: "approved", isDeleted: false };
 
   if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
   if (city) query["location.city"] = String(city);
   if (category) query.category = category;
+  if (amenities) {
+    const wanted = String(amenities).split(",").map((a) => a.trim()).filter(Boolean);
+    if (wanted.length) query.amenities = { $all: wanted };
+  }
+  if (guests) {
+    const fits = await Space.aggregate([
+      { $match: { isActive: true } },
+      { $group: { _id: "$venue", maxCapacity: { $max: "$capacity" } } },
+      { $match: { maxCapacity: { $gte: Number(guests) } } },
+    ]);
+    query._id = { $in: fits.map((r) => r._id) };
+  }
 
   // MAPS INTEGRATION
   if (lng && lat && radius) {
@@ -156,9 +186,39 @@ const getApprovedVenues = async (filters) => {
   }
 
   const total = await Venue.countDocuments(query);
-  const venues = await Venue.find(query).skip(skip).limit(limit).lean();
+  // $near already orders by distance, so only apply a sort when no location was given
+  const order = lng && lat && radius ? undefined : sort === "rating" ? "-averageRating -totalReviews" : "-createdAt";
+  let find = Venue.find(query).skip(skip).limit(limit);
+  if (order) find = find.sort(order);
+  const venues = await attachCapacity(await find.lean());
 
   return { venues, total, pages: Math.ceil(total / limit) };
+};
+
+// Which spaces are already taken between two dates (no personal details): used to grey out calendar days.
+const getVenueAvailability = async (venueId, { from, to }) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    throw new AppError("Provide a valid from and to date", 400);
+  }
+  if ((end - start) / 86400000 > 93) throw new AppError("Ask for at most three months at a time", 400);
+
+  const venue = await Venue.findOne({ _id: venueId, isDeleted: false, status: "approved" }).select("_id");
+  if (!venue) throw new AppError("Venue not found", 404);
+
+  const spaces = await Space.find({ venue: venueId, isActive: true }).select("_id");
+  const { ACTIVE_BOOKING_STATUSES } = require("./paymentService");
+  const bookings = await Booking.find({
+    space: { $in: spaces.map((s) => s._id) },
+    status: { $in: ACTIVE_BOOKING_STATUSES },
+    startTime: { $lt: end },
+    endTime: { $gt: start },
+  })
+    .select("space startTime endTime")
+    .lean();
+
+  return bookings.map((b) => ({ space: b.space, startTime: b.startTime, endTime: b.endTime }));
 };
 
 // Landing page venue-type cards: how many approved venues exist per category
@@ -176,10 +236,11 @@ const getCategoryCounts = async () => {
 
 // Landing page "Our Finest Heritage Spaces": admin-curated picks
 const getFeaturedVenues = async (limit = 3) => {
-  return await Venue.find({ isFeatured: true, status: "approved", isDeleted: false })
+  const venues = await Venue.find({ isFeatured: true, status: "approved", isDeleted: false })
     .sort("-createdAt")
     .limit(limit)
     .lean();
+  return attachCapacity(venues);
 };
 
 // Public venue page: only approved venues, and no owner contact details
@@ -265,6 +326,7 @@ module.exports = {
   getCategoryCounts,
   getFeaturedVenues,
   getVenueById,
+  getVenueAvailability,
   getAllVenues,
   getApprovedVenueCount,
   updateVenueStatus,
