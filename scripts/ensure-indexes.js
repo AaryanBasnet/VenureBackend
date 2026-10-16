@@ -36,7 +36,7 @@ const run = async () => {
   const models = [
     "../model/user", "../model/venue", "../model/space", "../model/review", "../model/notification",
     "../model/chat", "../model/message", "../model/booking", "../model/inquiry", "../model/quotation",
-    "../model/payment", "../model/paymentAttempt", "../model/refreshToken", "../model/activityLog",
+    "../model/payment", "../model/paymentAttempt", "../model/venueApplication", "../model/refreshToken", "../model/activityLog",
   ].map((m) => require(m));
 
   await mongoose.connect(process.env.DB_URL);

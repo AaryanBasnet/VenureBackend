@@ -83,7 +83,23 @@ const newsletterLimiter = rateLimit({
   message: limitMessage("Too many attempts. Please try again later."),
 });
 
+/**
+ * Venue applications (public, store files) and the set-your-password link
+ */
+const applicationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 8,
+  message: limitMessage("Too many applications from this address. Please try again later."),
+});
+const setupPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: limitMessage("Too many attempts. Please try again later."),
+});
+
 module.exports = {
+  applicationLimiter,
+  setupPasswordLimiter,
   loginLimiter,
   forgotPasswordLimiter,
   resetCodeLimiter,

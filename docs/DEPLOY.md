@@ -14,7 +14,7 @@ The API is a plain Node 22 server (`node server.js`, port from `PORT`). A Docker
 | `ESEWA_FORM_URL` | live payments | `https://epay.esewa.com.np/api/epay/main/v2/form` (default is the sandbox) |
 | `ESEWA_STATUS_URL` | live payments | `https://esewa.com.np/api/epay/transaction/status/` (default is the sandbox) |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | yes | image uploads |
-| `GMAIL_USER`, `GMAIL_PASS` | for password reset | Gmail app password |
+| `GMAIL_USER`, `GMAIL_PASS` | for password reset and venue applications | Gmail app password. Venue owners get their "choose your password" link by email, so approvals need this working. If it is missing, an approval still succeeds and the admin page offers "Send the link again" |
 | `GOOGLE_CLIENT_ID` | optional | Google sign-in; same value as the frontend's `VITE_GOOGLE_CLIENT_ID` |
 
 `DISABLE_RATE_LIMITS=1` only works outside production and exists for local testing.
@@ -41,3 +41,13 @@ They create spaces for existing venues and convert old bookings to the inquiry/q
 ## 5. Payments
 
 Deposits are paid on eSewa. The server signs the amount, the customer pays on eSewa, and on return the server verifies the signature and asks eSewa's status API before creating the booking. eSewa has no refund API, so cancellations create a pending refund record (`Payment` of type `refund`, status `pending`) that Venure pays back by hand.
+
+## 6. Venue applications
+
+Owners no longer sign themselves up. They apply at `/list-your-venue/apply` (no account), and an admin reviews the application under Admin, Applications.
+
+- Approving creates the owner account (with no password), the live venue with its halls and photos, and emails a one-time link (`FRONTEND_URL` + `/set-password?token=...`, valid 7 days). The owner chooses a password there and signs in with the email they applied with.
+- The business registration and PAN certificates are stored privately on Cloudinary (type `authenticated`, folder `venure/applications-private`) and are only reachable through a 5 minute signed link for an admin.
+- Run `node scripts/ensure-indexes.js` after deploying: it creates the one-open-application-per-email index.
+- `POST /api/auth/register` still accepts `role: "VenueOwner"` (the admin "add owner" screen uses it). Anyone who calls the API directly can still make an owner account that way; closing it is a separate decision.
+

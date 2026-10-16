@@ -7,7 +7,9 @@ const authController = require("../controller/authController");
 // Middlewares
 const validate = require("../middleware/validate");
 const { protectRoute } = require("../middleware/authMiddleware");
-const { loginLimiter, registerLimiter } = require("../middleware/rateLimiters");
+const { loginLimiter, registerLimiter, setupPasswordLimiter } = require("../middleware/rateLimiters");
+const { setupPasswordSchema } = require("../validators/venueApplicationValidators");
+const venueApplicationController = require("../controller/venueApplicationController");
 
 // Validations (Ensure the path matches where you store your Zod schemas)
 const { registerSchema, loginSchema, googleAuthSchema } = require("../validators/authValidators");
@@ -37,6 +39,9 @@ router.post(
 );
 
 // Cookie-based token rotation — no body validation needed
+// An approved venue owner chooses a password from the emailed one-time link
+router.post("/setup-password", setupPasswordLimiter, validate(setupPasswordSchema), venueApplicationController.setupPassword);
+
 router.post("/refresh", authController.refreshToken);
 router.post("/logout", authController.logoutUser);
 

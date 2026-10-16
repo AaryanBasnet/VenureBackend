@@ -72,6 +72,23 @@ const InquirySchema = new mongoose.Schema(
       default: null,
     },
     respondedAt: Date,
+    // Files the customer sent with the request (a menu card, a guest list). They are stored on Cloudinary as
+    // "authenticated" assets, so the stored id is useless without the API's signed link (see inquiryService.getAttachmentLink).
+    attachments: {
+      type: [
+        new mongoose.Schema(
+          {
+            publicId: { type: String, required: true, select: false },
+            originalName: { type: String, required: true, maxlength: 200 },
+            mimeType: { type: String, required: true },
+            size: { type: Number, default: 0 },
+            uploadedAt: { type: Date, default: Date.now },
+          },
+          { _id: true }
+        ),
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );

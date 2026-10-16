@@ -66,6 +66,10 @@ const errorHandler = (err, req, res, next) => {
   if (error instanceof multer.MulterError) {
     error = new AppError(`Upload error: ${error.message}`, 400);
   }
+  // Cloudinary refused the file itself (corrupt, wrong format): the sender's problem, not a server fault
+  if (error?.http_code >= 400 && error.http_code < 500 && !error.isOperational) {
+    error = new AppError("That file could not be processed. Check that it is a valid PDF or image and try again.", 400);
+  }
   if (error.message?.includes("Only image files are allowed")) {
     error = new AppError(error.message, 400);
   }

@@ -56,6 +56,9 @@ const VenueSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // What the owner called the venue when applying (banquet hall, hotel, heritage). The site's category above
+    // is the reviewer's choice at approval; the two may be merged later.
+    venueType: { type: String, enum: ["banquet-party-palace", "hotel-resort", "heritage-traditional"] },
     category: {
       type: String,
       enum: VENUE_CATEGORIES,
