@@ -212,6 +212,8 @@ Other findings outside my files:
 ## Reproduce
 
 ```
+# 0. pick a password for the throw-away load-test accounts (any value; it is never committed)
+export LOAD_PASSWORD=...
 # 1. data (refuses anything but a local database whose name contains "load"; drops it first)
 DB_URL=mongodb://127.0.0.1:27017/venure-load node scripts/seed-load.js
 # 2. indexes / derived fields on the new code
@@ -227,7 +229,7 @@ DB_URL=mongodb://127.0.0.1:27017/venure-load node k6/run-race.js --label after -
 # jest
 npx jest test/venueSearchFilters.test.js test/perfIndexes.test.js test/raceConditions.test.js
 ```
-Test accounts: `load-admin@load.test`, `load-owner-N@load.test`, `load-customer-N@load.test`, password `LoadTest#123`
+Test accounts: `load-admin@load.test`, `load-owner-N@load.test`, `load-customer-N@load.test`, password: whatever you set in `LOAD_PASSWORD`
 (local throw-away database only). On Windows git-bash prefix k6/node commands with `MSYS_NO_PATHCONV=1`.
 To measure a "before", extract the old commit (`git archive <commit> | tar -x -C somewhere`), link `node_modules`, run
 it on 5053 against the same database before running `ensure-indexes.js`.

@@ -1,8 +1,0 @@
-{
-  "scenario": "replay",
-  "vus": 20,
-  "statusCodes": {
-    "200": 19,
-    "201": 1
-  }
-}

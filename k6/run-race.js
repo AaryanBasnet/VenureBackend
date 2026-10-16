@@ -7,6 +7,11 @@
 //   DB_URL=mongodb://127.0.0.1:27017/venure-load node k6/run-race.js --label before --port 5053 [--n 50]
 //
 // Output: k6/results/<label>/race.json (verdict per scenario) and a markdown table on stdout.
+if (!process.env.LOAD_PASSWORD) {
+  console.error("Set LOAD_PASSWORD to the password the load database was seeded with (see docs/PERFORMANCE.md).");
+  process.exit(1);
+}
+
 const { spawn, spawnSync } = require("child_process");
 const mongoose = require("mongoose");
 const fs = require("fs");
@@ -28,7 +33,7 @@ fs.mkdirSync(outDir, { recursive: true });
 
 const k6 = (scenario, env = {}) => {
   const out = path.join(outDir, `race-${scenario}.json`).split(path.sep).join("/");
-  const args = ["run", "--quiet", "-e", `BASE=http://localhost:${port}`, "-e", `SCENARIO=${scenario}`, "-e", `N=${env.N || N}`, "-e", `OUT=${out}`];
+  const args = ["run", "--quiet", "-e", `PASSWORD=${process.env.LOAD_PASSWORD}`, "-e", `BASE=http://localhost:${port}`, "-e", `SCENARIO=${scenario}`, "-e", `N=${env.N || N}`, "-e", `OUT=${out}`];
   Object.entries(env).forEach(([k, v]) => args.push("-e", `${k}=${v}`));
   args.push(path.join(__dirname, "race.js"));
   const r = spawnSync("k6", args, { cwd: root, encoding: "utf8" });

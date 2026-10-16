@@ -10,6 +10,13 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// The load-test accounts share one password that you choose: LOAD_PASSWORD=<something> (never committed).
+const loadPassword = process.env.LOAD_PASSWORD || "";
+if (!loadPassword) {
+  console.error("Set LOAD_PASSWORD to the password the load-test accounts should use (and pass the same value to k6/run.js).");
+  process.exit(1);
+}
+
 const uri = process.env.DB_URL || "";
 const dbName = (uri.split("?")[0].split("/").pop() || "").toLowerCase();
 if (!/(127\.0\.0\.1|localhost)/.test(uri) || !dbName.includes("load")) {
@@ -71,7 +78,7 @@ const insertAll = async (col, docs) => {
   await db.dropDatabase();
   const c = (n) => db.collection(n);
   const now = Date.now();
-  const hash = await bcrypt.hash("LoadTest#123", 10); // one shared hash: 5,400 separate bcrypts would take minutes
+  const hash = await bcrypt.hash(loadPassword, 10); // one shared hash: 5,400 separate bcrypts would take minutes
 
   // ---- users ----
   const users = [];

@@ -14,7 +14,8 @@ import { Counter } from "k6/metrics";
 const BASE = __ENV.BASE || "http://localhost:5053";
 const SCENARIO = __ENV.SCENARIO || "book";
 const N = Number(__ENV.N || 50);
-const PASSWORD = "LoadTest#123";
+const PASSWORD = __ENV.PASSWORD; // the LOAD_PASSWORD the database was seeded with (k6/run-race.js passes it on)
+if (!PASSWORD) throw new Error("PASSWORD is not set: run through k6/run-race.js with LOAD_PASSWORD set.");
 const fixtureFile = JSON.parse(open("./results/race-fixture.json"));
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -56,7 +57,7 @@ export default function (ctx) {
   } else if (SCENARIO === "favorites") {
     res = http.post(`${BASE}/api/user/favorites/${ctx.venue}`, null, { headers: { ...ip, Cookie: `accessToken=${ctx.token}` } });
   } else if (SCENARIO === "register") {
-    res = http.post(`${BASE}/api/auth/register`, JSON.stringify({ name: "Race", email: __ENV.EMAIL || "race-dup@load.test", phone: "9812345678", password: "Test@1234" }), { headers: { ...JSON_HEADERS, ...ip } });
+    res = http.post(`${BASE}/api/auth/register`, JSON.stringify({ name: "Race", email: __ENV.EMAIL || "race-dup@load.test", phone: "9812345678", password: PASSWORD }), { headers: { ...JSON_HEADERS, ...ip } });
   }
   counter(res.status).add(1);
 }

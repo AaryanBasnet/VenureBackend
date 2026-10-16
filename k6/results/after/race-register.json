@@ -1,8 +1,0 @@
-{
-  "scenario": "register",
-  "vus": 30,
-  "statusCodes": {
-    "201": 1,
-    "400": 29
-  }
-}

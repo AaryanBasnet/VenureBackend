@@ -15,7 +15,8 @@ const GROUP = __ENV.GROUP || "browse";
 const ONLY = __ENV.ENDPOINT || "";
 const VUS = Number(__ENV.VUS || 50);
 const DURATION = __ENV.DURATION || "30s";
-const PASSWORD = __ENV.PASSWORD || "LoadTest#123";
+const PASSWORD = __ENV.PASSWORD; // the LOAD_PASSWORD the database was seeded with (k6/run.js passes it on)
+if (!PASSWORD) throw new Error("PASSWORD is not set: run through k6/run.js with LOAD_PASSWORD set.");
 const USERS = Number(__ENV.USERS || 20); // distinct accounts per role the VUs spread over
 const OUT = __ENV.OUT || `k6/results/tmp/${GROUP}.json`;
 

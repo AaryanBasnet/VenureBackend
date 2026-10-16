@@ -5,3 +5,5 @@ uploads
 .env.test
 uploads
 logs
+# k6 raw results (reproducible with k6/run.js; the summaries and comparison tables are kept in git)
+k6/results/*

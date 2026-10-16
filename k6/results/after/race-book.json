@@ -1,8 +1,0 @@
-{
-  "scenario": "book",
-  "vus": 50,
-  "statusCodes": {
-    "201": 1,
-    "409": 49
-  }
-}

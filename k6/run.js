@@ -5,6 +5,11 @@
 //
 // --solo additionally runs every endpoint on its own (so per-endpoint numbers are not diluted by the mix).
 // Output: k6/results/<label>/<group>[-<endpoint>]/run<N>.json, <label>/summary.json, <label>/summary.md
+if (!process.env.LOAD_PASSWORD) {
+  console.error("Set LOAD_PASSWORD to the password the load database was seeded with (see docs/PERFORMANCE.md).");
+  process.exit(1);
+}
+
 const { spawnSync, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -49,7 +54,7 @@ const runK6 = (group, endpoint, run) => {
   if (flag("resume") && fs.existsSync(out)) return JSON.parse(fs.readFileSync(out, "utf8")); // reuse a finished run
   const pid = serverPid();
   const sampler = startSampler(pid, samples, parseInt(duration) + 20);
-  const args = ["run", "--quiet", "-e", `BASE=http://localhost:${port}`, "-e", `GROUP=${group}`, "-e", `VUS=${vus}`, "-e", `DURATION=${duration}`, "-e", `OUT=${out.split(path.sep).join("/")}`];
+  const args = ["run", "--quiet", "-e", `PASSWORD=${process.env.LOAD_PASSWORD}`, "-e", `BASE=http://localhost:${port}`, "-e", `GROUP=${group}`, "-e", `VUS=${vus}`, "-e", `DURATION=${duration}`, "-e", `OUT=${out.split(path.sep).join("/")}`];
   if (endpoint) args.push("-e", `ENDPOINT=${endpoint}`);
   args.push(path.join(__dirname, "load.js"));
   const r = spawnSync("k6", args, { cwd: root, encoding: "utf8" });
