@@ -59,3 +59,24 @@ exports.declineInquiry = asyncHandler(async (req, res) => {
     data: inquiry,
   });
 });
+
+exports.assertCanAttach = asyncHandler(async (req, res, next) => {
+  await inquiryService.assertCanAttach(req.params.id, req.user._id);
+  next();
+});
+
+exports.addAttachments = asyncHandler(async (req, res) => {
+  const inquiry = await inquiryService.addAttachments(req.params.id, req.user._id, req.files);
+  res.status(201).json({ success: true, message: "File added", data: inquiry });
+});
+
+exports.removeAttachment = asyncHandler(async (req, res) => {
+  const inquiry = await inquiryService.removeAttachment(req.params.id, req.params.attachmentId, req.user._id);
+  res.status(200).json({ success: true, message: "File removed", data: inquiry });
+});
+
+// JSON, not a redirect: the page asks with its cookie, then opens the short-lived link.
+exports.getAttachmentLink = asyncHandler(async (req, res) => {
+  const url = await inquiryService.getAttachmentLink(req.params.id, req.params.attachmentId, req.user);
+  res.status(200).json({ success: true, data: { url } });
+});

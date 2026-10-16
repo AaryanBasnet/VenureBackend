@@ -113,7 +113,10 @@ const login = async (email, password, userAgent, ip) => {
   const user = await findActiveUser({ email }).select("+password");
   if (!user) throw new AppError("Invalid credentials", 401);
   if (!user.password) {
-    // Registered via Google; there is no password to check against
+    // Either a Google account, or an approved venue owner who has not chosen a password yet
+    if (!user.googleId) {
+      throw new AppError("Choose your password first, using the link in your approval email.", 401);
+    }
     throw new AppError("This account signs in with Google. Use “Continue with Google” instead.", 401);
   }
 

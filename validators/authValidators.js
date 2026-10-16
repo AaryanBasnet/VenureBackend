@@ -75,6 +75,7 @@ const googleAuthSchema = z.object({
 });
 
 module.exports = {
+  strongPassword,
   registerSchema,
   loginSchema,
   forgotPasswordSchema,

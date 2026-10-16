@@ -3,6 +3,11 @@
 // An uploaded file comes back as {path, filename} exactly like a Cloudinary upload would.
 class CloudinaryStorage {
   _handleFile(req, file, cb) {
+    // What Cloudinary does with a file it cannot read: an error object with the HTTP status, not an Error
+    if (/^corrupt/.test(file.originalname)) {
+      file.stream.resume();
+      return cb({ message: "Invalid PDF file", name: "Error", http_code: 400 });
+    }
     let size = 0;
     file.stream.on("data", (chunk) => { size += chunk.length; });
     file.stream.on("error", cb);

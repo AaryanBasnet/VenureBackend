@@ -9,6 +9,10 @@ const sendEmail = async ({ to, subject, html }) => {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_PASS,
       },
+      // A mail server that does not answer must not hold a request open for minutes
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
 
     const info = await transporter.sendMail({

@@ -3,6 +3,7 @@ const router = express.Router();
 
 const inquiryController = require("../controller/inquiryController");
 const quotationController = require("../controller/quotationController");
+const { inquiryAttachments } = require("../middleware/uploadMiddleware");
 const validate = require("../middleware/validate");
 const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
 const { createInquirySchema } = require("../validators/inquiryValidators");
@@ -15,6 +16,14 @@ router.use(protectRoute);
 ======================== */
 router.post("/", authorizeRoles("Customer", "Admin"), validate(createInquirySchema), inquiryController.createInquiry);
 router.get("/my", authorizeRoles("Customer", "Admin"), inquiryController.getMyInquiries);
+router.post(
+  "/:id/attachments",
+  authorizeRoles("Customer", "Admin"),
+  inquiryController.assertCanAttach,
+  inquiryAttachments(),
+  inquiryController.addAttachments
+);
+router.delete("/:id/attachments/:attachmentId", authorizeRoles("Customer", "Admin"), inquiryController.removeAttachment);
 router.put("/:id/cancel", authorizeRoles("Customer", "Admin"), inquiryController.cancelInquiry);
 
 /* ========================
@@ -32,6 +41,7 @@ router.post(
 /* ========================
    SHARED (ownership enforced in the service)
 ======================== */
+router.get("/:id/attachments/:attachmentId/link", inquiryController.getAttachmentLink);
 router.get("/:id", inquiryController.getInquiryById);
 
 module.exports = router;

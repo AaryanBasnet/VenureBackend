@@ -16,12 +16,13 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    // Google-only accounts never set a password
+    // Google-only accounts never set a password, and an approved venue owner has none until they use the emailed link
     required: function () {
-      return !this.googleId;
+      return !this.googleId && !this.passwordSetupPending;
     },
     select: false, // ENTERPRISE LAYER: Never return the password hash by default in queries
   },
+  passwordSetupPending: { type: Boolean, default: false },
   googleId: {
     type: String,
     sparse: true, // Lets every password-only account omit this without violating uniqueness

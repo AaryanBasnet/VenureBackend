@@ -16,6 +16,7 @@ const passwordRoutes = require("./route/passwordRoutes")
 const venueRoutes = require("./route/venueRoutes");
 const spaceRoutes = require("./route/spaceRoutes");
 const inquiryRoutes = require("./route/inquiryRoutes");
+const venueApplicationRoutes = require("./route/venueApplicationRoutes");
 const quotationRoutes = require("./route/quotationRoutes");
 const bookingRoutes = require("./route/bookingRoutes");
 const userRoutes = require("./route/userRoutes");
@@ -152,6 +153,7 @@ app.use("/api/password", passwordRoutes)
 app.use("/api/venues", venueRoutes);
 app.use("/api/spaces", spaceRoutes);
 app.use("/api/inquiries", inquiryRoutes);
+app.use("/api/venue-applications", venueApplicationRoutes);
 app.use("/api/quotations", quotationRoutes);
 // app.use("/api/admin/user", adminUserRoutes);
 app.use("/api/payment", paymentRoutes);
