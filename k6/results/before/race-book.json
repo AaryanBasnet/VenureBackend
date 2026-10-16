@@ -1,0 +1,7 @@
+{
+  "scenario": "book",
+  "vus": 50,
+  "statusCodes": {
+    "409": 50
+  }
+}

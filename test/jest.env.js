@@ -16,3 +16,7 @@ const defaults = {
 for (const [key, value] of Object.entries(defaults)) {
   process.env[key] ??= value;
 }
+
+// Windows ignores a TZ given on the command line when a process starts; assigning it again inside the process
+// applies it. This lets `TZ=America/New_York npx jest ...` prove the date logic does not depend on the host zone.
+if (process.env.TZ) process.env.TZ = process.env.TZ;

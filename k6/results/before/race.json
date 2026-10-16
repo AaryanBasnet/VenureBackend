@@ -1,0 +1,39 @@
+[
+  {
+    "scenario": "50 customers book one slot",
+    "ok": true,
+    "liveBookings": 0,
+    "stuckHolds": 0,
+    "refundsDue": 0,
+    "httpStatus": {
+      "409": 50
+    }
+  },
+  {
+    "scenario": "one payment callback replayed 20x in parallel",
+    "ok": false,
+    "bookings": 0,
+    "paymentRows": 0,
+    "httpStatus": {
+      "409": 20
+    }
+  },
+  {
+    "scenario": "51 parallel favorite toggles of one venue",
+    "ok": false,
+    "copiesStored": 11,
+    "favorites": 11,
+    "httpStatus": {
+      "200": 51
+    }
+  },
+  {
+    "scenario": "30 parallel sign-ups with one email",
+    "ok": true,
+    "accounts": 1,
+    "httpStatus": {
+      "201": 1,
+      "400": 29
+    }
+  }
+]

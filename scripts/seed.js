@@ -117,6 +117,9 @@ const seedData = async () => {
       );
     }
 
+    await require('../services/landingService').ensureSeed();
+    logger.info('Seeding: home page content ready.');
+
     const approved = await Venue.countDocuments({ status: 'approved', isDeleted: false });
     logger.info(`Seeding complete! ${approved} approved venues in database.`);
     process.exit(0);

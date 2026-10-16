@@ -1,0 +1,7 @@
+{
+  "scenario": "favorites",
+  "vus": 51,
+  "statusCodes": {
+    "200": 51
+  }
+}

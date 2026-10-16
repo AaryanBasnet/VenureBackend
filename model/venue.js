@@ -35,6 +35,14 @@ const VENUE_CATEGORIES = [
   "rooftop-terraces",
 ];
 
+const NO_PACKAGE_SORT_KEY = 1e12;
+
+const derivePriceFields = (packages = []) => {
+  const prices = packages.map((p) => Number(p.pricePerPlate)).filter((n) => Number.isFinite(n));
+  const min = prices.length ? Math.min(...prices) : null;
+  return { minPricePerPlate: min, priceSortKey: min === null ? NO_PACKAGE_SORT_KEY : min };
+};
+
 const VenueSchema = new mongoose.Schema(
   {
     owner: {
@@ -118,12 +126,56 @@ const VenueSchema = new mongoose.Schema(
       default: false,
       index: true, // Speeds up the query for the landing page's featured venues
     },
+    // ---- Denormalised read models (kept up to date by hooks; see scripts/backfill-venue-derived.js) ----
+    // Cheapest package price per plate (null when the venue has no packages). Maintained on every save.
+    minPricePerPlate: { type: Number, default: null },
+    // Same value, but venues without packages get a huge number so they sort LAST in ascending order.
+    priceSortKey: { type: Number, default: NO_PACKAGE_SORT_KEY, select: false },
+    // Largest active space and number of active spaces (maintained by hooks in model/space.js).
+    maxCapacity: { type: Number, default: 0 },
+    spaceCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
+// Derive the price fields whenever packages change (create, save)
+VenueSchema.pre("validate", function derivePrice() {
+  if (this.isNew || this.isModified("packages")) {
+    Object.assign(this, derivePriceFields(this.packages));
+  }
+});
+
+// Updates that bypass save() and touch packages must carry the derived fields too
+VenueSchema.pre(["findOneAndUpdate", "updateOne", "updateMany"], function derivePriceOnUpdate() {
+  const update = this.getUpdate() || {};
+  const packages = update.packages ?? update.$set?.packages;
+  if (Array.isArray(packages)) {
+    this.set(derivePriceFields(packages));
+  }
+});
+
 // General search index
 VenueSchema.index({ venueName: "text", "location.city": "text" });
 
+// Any write to a venue can change a cached public answer (list, featured, counts, detail)
+const dropPublicCache = () => require("../utils/publicCache").invalidate();
+VenueSchema.post(["save", "findOneAndUpdate", "findOneAndDelete", "updateOne", "updateMany", "deleteMany", "insertMany"], dropPublicCache);
+VenueSchema.post("deleteOne", { document: true, query: true }, dropPublicCache);
+
+// Real query shapes (see docs/PERFORMANCE.md). Every public list filters status+isDeleted first.
+VenueSchema.index({ status: 1, isDeleted: 1, createdAt: -1 });
+VenueSchema.index({ status: 1, isDeleted: 1, category: 1, createdAt: -1 });
+VenueSchema.index({ status: 1, isDeleted: 1, "location.city": 1, createdAt: -1 });
+VenueSchema.index({ status: 1, isDeleted: 1, totalReviews: -1, averageRating: -1, createdAt: -1 });
+VenueSchema.index({ status: 1, isDeleted: 1, averageRating: -1, totalReviews: -1 });
+VenueSchema.index({ status: 1, isDeleted: 1, priceSortKey: 1, createdAt: -1 });
+VenueSchema.index({ status: 1, isDeleted: 1, minPricePerPlate: -1, createdAt: -1 });
+VenueSchema.index({ status: 1, isDeleted: 1, maxCapacity: 1 });
+VenueSchema.index({ "packages.pricePerPlate": 1 });
+VenueSchema.index({ isFeatured: 1, status: 1, isDeleted: 1, createdAt: -1 });
+VenueSchema.index({ owner: 1, isDeleted: 1, createdAt: -1 });
+
 module.exports = mongoose.models.Venue || mongoose.model("Venue", VenueSchema);
 module.exports.VENUE_CATEGORIES = VENUE_CATEGORIES;
+module.exports.derivePriceFields = derivePriceFields;
+module.exports.NO_PACKAGE_SORT_KEY = NO_PACKAGE_SORT_KEY;

@@ -1,0 +1,34 @@
+{
+  "group": "browse",
+  "vus": 50,
+  "duration": "12s",
+  "base": "http://localhost:5053",
+  "seconds": 12.04192,
+  "overall": {
+    "rps": 2987.3143153251312,
+    "requests": 35973,
+    "error_rate": 0,
+    "p50": 16.2718,
+    "p95": 21.2923,
+    "p99": 23.55774,
+    "avg": 16.49102704528386,
+    "bytes_per_req": 1219.219053178773
+  },
+  "endpoints": {
+    "venues_category_counts": {
+      "count": 35972,
+      "rps": 2987.2312720895006,
+      "p50": 16.272,
+      "p90": 20.06799,
+      "p95": 21.2923,
+      "p99": 23.557745,
+      "avg": 16.491441865895595,
+      "max": 41.5557,
+      "error_rate": 0
+    }
+  },
+  "process": {
+    "cpu_pct_of_core": 101.83554743223966,
+    "rss_mb_peak": 294.34765625
+  }
+}

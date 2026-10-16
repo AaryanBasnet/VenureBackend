@@ -108,8 +108,10 @@ const getVenuesByOwner = async (ownerId, filters = {}) => {
 
   const query = { owner: ownerId, isDeleted: false };
   
-  const venues = await Venue.find(query).skip(skip).limit(limit).sort("-createdAt");
-  const total = await Venue.countDocuments(query);
+  const [venues, total] = await Promise.all([
+    Venue.find(query).select("-priceSortKey").sort("-createdAt").skip(skip).limit(limit).lean(),
+    Venue.countDocuments(query),
+  ]);
 
   return { venues, total, pages: Math.ceil(total / limit) };
 };
@@ -155,6 +157,8 @@ const softDeleteVenue = async (venueId, userId, userRole) => {
 // space and how many there are, so attach those to a list of (lean) venues.
 const attachCapacity = async (venues) => {
   if (venues.length === 0) return venues;
+  // Venues now carry maxCapacity/spaceCount themselves (kept up to date by hooks in model/space.js)
+  if (venues.every((v) => v.maxCapacity !== undefined && v.spaceCount !== undefined)) return venues;
   const rows = await Space.aggregate([
     { $match: { venue: { $in: venues.map((v) => v._id) }, isActive: true } },
     { $group: { _id: "$venue", maxCapacity: { $max: "$capacity" }, spaceCount: { $sum: 1 } } },
@@ -167,8 +171,21 @@ const attachCapacity = async (venues) => {
   }));
 };
 
+// Sort orders for the public list. Every one ends in _id so pages never overlap. Venues without packages
+// sort last for both price orders (priceSortKey is a huge number for them; minPricePerPlate is null).
+const SORTS = {
+  newest: { createdAt: -1, _id: -1 },
+  rating: { averageRating: -1, totalReviews: -1, createdAt: -1, _id: -1 },
+  popular: { totalReviews: -1, averageRating: -1, createdAt: -1, _id: -1 },
+  price_asc: { priceSortKey: 1, createdAt: -1, _id: -1 },
+  price_desc: { minPricePerPlate: -1, createdAt: -1, _id: -1 },
+};
+
+// Lists never ship drink options (detail-page only) or the internal sort key
+const LIST_PROJECTION = "-drinkOptions -priceSortKey";
+
 const getApprovedVenues = async (filters) => {
-  const { search, city, category, lng, lat, radius, guests, amenities, sort } = filters;
+  const { search, city, category, lng, lat, radius, guests, amenities, sort, minPrice, maxPrice } = filters;
   const { page, limit, skip } = toPaging(filters);
   const query = { status: "approved", isDeleted: false };
 
@@ -179,17 +196,21 @@ const getApprovedVenues = async (filters) => {
     const wanted = String(amenities).split(",").map((a) => a.trim()).filter(Boolean);
     if (wanted.length) query.amenities = { $all: wanted };
   }
-  if (guests) {
-    const fits = await Space.aggregate([
-      { $match: { isActive: true } },
-      { $group: { _id: "$venue", maxCapacity: { $max: "$capacity" } } },
-      { $match: { maxCapacity: { $gte: Number(guests) } } },
-    ]);
-    query._id = { $in: fits.map((r) => r._id) };
+  if (guests) query.maxCapacity = { $gte: Number(guests) };
+
+  // Price: a venue matches when ANY of its packages costs between minPrice and maxPrice
+  const hasMin = minPrice !== undefined && minPrice !== null && minPrice !== "";
+  const hasMax = maxPrice !== undefined && maxPrice !== null && maxPrice !== "";
+  if (hasMin || hasMax) {
+    const range = {};
+    if (hasMin) range.$gte = Number(minPrice);
+    if (hasMax) range.$lte = Number(maxPrice);
+    query.packages = { $elemMatch: { pricePerPlate: range } };
   }
 
   // MAPS INTEGRATION
-  if (lng && lat && radius) {
+  const nearby = lng && lat && radius;
+  if (nearby) {
     query.geoCoordinates = {
       $near: {
         $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
@@ -198,18 +219,25 @@ const getApprovedVenues = async (filters) => {
     };
   }
 
-  const total = await Venue.countDocuments(query);
-  // $near already orders by distance, so only apply a sort when no location was given
-  const order = lng && lat && radius ? undefined : sort === "rating" ? "-averageRating -totalReviews" : "-createdAt";
-  let find = Venue.find(query).skip(skip).limit(limit);
-  if (order) find = find.sort(order);
-  const venues = await attachCapacity(await find.lean());
+  // $near already orders by distance, so only apply a sort when no location was given.
+  let find = Venue.find(query).select(LIST_PROJECTION).skip(skip).limit(limit);
+  if (!nearby) find = find.sort(SORTS[sort] || SORTS.newest);
+  // $near is not allowed in countDocuments: count the same circle with $geoWithin instead
+  const countQuery = { ...query };
+  if (nearby) {
+    countQuery.geoCoordinates = {
+      $geoWithin: { $centerSphere: [[parseFloat(lng), parseFloat(lat)], (parseFloat(radius) * 1609.34) / 6378100] },
+    };
+  }
+  const [venues, total] = await Promise.all([find.lean(), Venue.countDocuments(countQuery)]);
 
   return { venues, total, pages: Math.ceil(total / limit) };
 };
 
 // Which spaces are already taken between two dates (no personal details): used to grey out calendar days.
-const getVenueAvailability = async (venueId, { from, to }) => {
+const AVAILABILITY_MAX_ROWS = 20000;
+const getVenueAvailability = async (venueId, { from, to } = {}) => {
+  if (typeof from !== "string" || typeof to !== "string") throw new AppError("Provide a valid from and to date", 400);
   const start = new Date(from);
   const end = new Date(to);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
@@ -221,14 +249,17 @@ const getVenueAvailability = async (venueId, { from, to }) => {
   if (!venue) throw new AppError("Venue not found", 404);
 
   const spaces = await Space.find({ venue: venueId, isActive: true }).select("_id");
-  const { ACTIVE_BOOKING_STATUSES } = require("./paymentService");
+  const { liveBookingFilter } = require("./slotService");
+  // Capped as a safety net: a 93 day window cannot legitimately hold more shifts than this
   const bookings = await Booking.find({
     space: { $in: spaces.map((s) => s._id) },
-    status: { $in: ACTIVE_BOOKING_STATUSES },
     startTime: { $lt: end },
     endTime: { $gt: start },
+    ...liveBookingFilter(),
   })
     .select("space startTime endTime")
+    .sort({ startTime: 1 })
+    .limit(AVAILABILITY_MAX_ROWS)
     .lean();
 
   return bookings.map((b) => ({ space: b.space, startTime: b.startTime, endTime: b.endTime }));
@@ -250,6 +281,7 @@ const getCategoryCounts = async () => {
 // Landing page "Our Finest Heritage Spaces": admin-curated picks
 const getFeaturedVenues = async (limit = 3) => {
   const venues = await Venue.find({ isFeatured: true, status: "approved", isDeleted: false })
+    .select(LIST_PROJECTION)
     .sort("-createdAt")
     .limit(limit)
     .lean();
@@ -259,7 +291,9 @@ const getFeaturedVenues = async (limit = 3) => {
 // Public venue page: only approved venues, and no owner contact details
 const getVenueById = async (venueId) => {
   const venue = await Venue.findOne({ _id: venueId, isDeleted: false, status: "approved" })
-    .populate("owner", "name avatar");
+    .select("-priceSortKey")
+    .populate("owner", "name avatar")
+    .lean();
 
   if (!venue) throw new AppError("Venue not found", 404);
   return venue;
@@ -278,13 +312,16 @@ const getAllVenues = async (filters = {}) => {
   if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
   if (VENUE_STATUSES.includes(status)) query.status = status;
 
-  const total = await Venue.countDocuments(query);
-  const venues = await Venue.find(query)
-    .populate("owner", "name email")
-    .skip(skip)
-    .limit(limit)
-    .sort("-createdAt")
-    .lean();
+  const [total, venues] = await Promise.all([
+    Venue.countDocuments(query),
+    Venue.find(query)
+      .select(LIST_PROJECTION)
+      .populate("owner", "name email")
+      .sort("-createdAt")
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+  ]);
 
   return { venues, total, pages: Math.ceil(total / limit) };
 };

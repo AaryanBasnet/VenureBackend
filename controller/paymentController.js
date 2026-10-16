@@ -12,9 +12,11 @@ exports.verifyEsewa = asyncHandler(async (req, res) => {
     req.user._id
   );
 
-  await bookingService.notifyBookingConfirmed(booking, req.app.get("io"));
+  // The same eSewa redirect arriving again (a refresh, a double click) returns the booking it already made
+  const replayed = Boolean(booking.$locals?.replayed);
+  if (!replayed) await bookingService.notifyBookingConfirmed(booking, req.app.get("io"));
 
-  res.status(201).json({
+  res.status(replayed ? 200 : 201).json({
     success: true,
     message: "Booking confirmed successfully",
     data: booking,

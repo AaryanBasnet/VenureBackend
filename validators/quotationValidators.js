@@ -6,8 +6,8 @@ const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid ID format"
 const lineItemSchema = z.object({
   label: z.string().min(1, "Line item needs a label"),
   description: z.string().optional(),
-  quantity: z.number().int().positive().default(1),
-  unitPrice: z.number().min(0, "Price cannot be negative"),
+  quantity: z.number().int().positive().max(100000).default(1),
+  unitPrice: z.number().finite().min(0, "Price cannot be negative").max(1_000_000_000, "Price is too large"),
   perGuest: z.boolean().default(false),
 });
 
@@ -18,10 +18,10 @@ const createQuotationSchema = z.object({
   space: objectIdSchema,
   eventDate: z.string().datetime({ message: "Invalid date. Must be ISO 8601 format." }),
   shift: z.enum(SHIFT_NAMES),
-  numberOfGuests: z.number().int().positive("Number of guests must be at least 1"),
-  lineItems: z.array(lineItemSchema).min(1, "A quotation needs at least one line item"),
+  numberOfGuests: z.number().int().positive("Number of guests must be at least 1").max(100000),
+  lineItems: z.array(lineItemSchema).min(1, "A quotation needs at least one line item").max(100),
   depositType: z.enum(["percentage", "fixed"]),
-  depositValue: z.number().positive("Deposit value must be positive"),
+  depositValue: z.number().finite().positive("Deposit value must be positive"),
   notes: z.string().max(1000).optional(),
 });
 

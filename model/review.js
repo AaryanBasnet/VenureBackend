@@ -84,6 +84,9 @@ reviewSchema.post("save", async function () {
 
 // Prevent duplicate reviews from the same user on the same booking — a customer
 // who books the same venue twice can leave two honest reviews.
-reviewSchema.index({ booking: 1, user: 1 }, { unique: true });
+reviewSchema.index({ booking: 1, user: 1 }, { unique: true }); // one review per booking, enforced by the database
+reviewSchema.index({ venue: 1, createdAt: -1 }); // public review list of a venue
+reviewSchema.index({ isFeatured: 1, rating: 1, createdAt: -1 }); // landing testimonials
+reviewSchema.index({ createdAt: -1, _id: -1 }); // admin moderation list
 
 module.exports = mongoose.model("Review", reviewSchema);

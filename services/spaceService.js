@@ -43,7 +43,7 @@ const updateSpace = async (spaceId, ownerId, updateData) => {
 };
 
 const getSpacesForVenue = async (venueId) => {
-  const spaces = await Space.find({ venue: venueId, isActive: true }).sort("name");
+  const spaces = await Space.find({ venue: venueId, isActive: true }).sort("name").lean(); // lean: read-only response
   return spaces.map(withResolvedShifts);
 };
 

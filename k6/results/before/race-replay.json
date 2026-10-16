@@ -1,0 +1,7 @@
+{
+  "scenario": "replay",
+  "vus": 20,
+  "statusCodes": {
+    "409": 20
+  }
+}
