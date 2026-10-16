@@ -1,125 +1,174 @@
-const request = require("supertest");
-const mongoose = require("mongoose");
-const path = require("path");
-const fs = require("fs");
-const { MongoMemoryServer } = require("mongodb-memory-server");
-const jwt = require("jsonwebtoken");
+// No network: Cloudinary's storage engine is replaced by an in-process one with the same contract.
+jest.mock("multer-storage-cloudinary", () => require("./helpers/fakeCloudinaryStorage"));
 
-process.env.JWT_SECRET = "testsecret";
-
-const app = require("../app"); // Your express app
 const User = require("../model/user");
+const { cloudinary } = require("../middleware/uploadMiddleware");
+const { startDb, stopDb, makeUser, as } = require("./helpers/api");
 
-let mongod;
-let userId;
-let userToken;
+let user;
+let destroy;
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri());
-
-  // Create a test user
-  const user = await User.create({
-    name: "Test User",
-    email: "testuser@example.com",
-    password: "hashedpassword",
-    phone: "1234567890",
-    address: "Test Address",
-  });
-
-  userId = user._id;
-
-  // Generate JWT for authentication
-  userToken = jwt.sign({ _id: userId.toString() }, process.env.JWT_SECRET);
+  await startDb();
+  destroy = jest.spyOn(cloudinary.uploader, "destroy").mockResolvedValue({ result: "ok" });
 });
 
 afterAll(async () => {
-  await mongoose.connection.dropDatabase();
-  await mongoose.connection.close();
-  await mongod.stop();
+  destroy.mockRestore();
+  await stopDb();
 });
 
-describe("User Profile API", () => {
-  describe("GET /profile", () => {
-    test("should return user profile without password", async () => {
-      const res = await request(app)
-        .get("/api/user/profile")
-        .set("Authorization", `Bearer ${userToken}`)
-        .expect(200);
+beforeEach(async () => {
+  destroy.mockClear();
+  user = await makeUser("Customer", { name: "Test User", phone: "9812345678", address: "Old Address" });
+});
 
-      expect(res.body.success).toBe(true);
-      expect(res.body.user).toBeDefined();
-      expect(res.body.user).toHaveProperty("name", "Test User");
-      expect(res.body.user).toHaveProperty("email", "testuser@example.com");
-      expect(res.body.user).not.toHaveProperty("password");
-    });
+const png = Buffer.from("89504e470d0a1a0a", "hex");
 
-    test("should return 401 if no auth token", async () => {
-      const res = await request(app).get("/api/user/profile").expect(401);
-      expect(res.body.success).toBe(false);
-    });
+describe("GET /api/user/profile", () => {
+  it("returns my profile without secrets", async () => {
+    const res = await as(user).get("/api/user/profile");
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.user).toMatchObject({ _id: String(user._id), name: "Test User", email: user.email, phone: "9812345678", address: "Old Address", role: "Customer" });
+    expect(res.body.user).not.toHaveProperty("password");
+    expect(res.body.user).not.toHaveProperty("resetPasswordToken");
+    expect(res.body.user).not.toHaveProperty("isDeleted");
   });
 
-  describe("PUT /profile", () => {
-    const uploadPath = path.join(__dirname, "../../uploads/users");
+  it("only ever returns the signed-in user", async () => {
+    const other = await makeUser("VenueOwner", { name: "Someone Else" });
+    const res = await as(other).get("/api/user/profile");
+    expect(res.body.user.name).toBe("Someone Else");
+    expect(res.body.user.role).toBe("VenueOwner");
+  });
 
-    afterEach(() => {
-      // Clean uploaded files
-      if (fs.existsSync(uploadPath)) {
-        fs.readdirSync(uploadPath).forEach((file) => {
-          fs.unlinkSync(path.join(uploadPath, file));
-        });
-      }
+  it("needs a session", async () => {
+    const res = await as(null).get("/api/user/profile");
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("stops working as soon as the account is deactivated, even with a valid token", async () => {
+    await User.updateOne({ _id: user._id }, { isDeleted: true });
+    const res = await as(user).get("/api/user/profile");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("PUT /api/user/profile", () => {
+  it("updates name, phone and address", async () => {
+    const res = await as(user).put("/api/user/profile", { name: "Updated Name", phone: "9800000001", address: "New Address" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ success: true, message: "Profile updated successfully" });
+    expect(res.body.user).toMatchObject({ name: "Updated Name", phone: "9800000001", address: "New Address" });
+
+    const stored = await User.findById(user._id).lean();
+    expect(stored).toMatchObject({ name: "Updated Name", phone: "9800000001", address: "New Address" });
+  });
+
+  it("changes only what was sent", async () => {
+    const res = await as(user).put("/api/user/profile", { phone: "9800000002" });
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({ name: "Test User", phone: "9800000002", address: "Old Address" });
+  });
+
+  it("accepts an empty update and changes nothing", async () => {
+    const res = await as(user).put("/api/user/profile", {});
+    expect(res.status).toBe(200);
+    expect(res.body.user.name).toBe("Test User");
+  });
+
+  it("cannot be used to change role, email, favorites or password (unknown fields are dropped)", async () => {
+    const res = await as(user).put("/api/user/profile", { name: "Still Me", role: "Admin", email: "hijack@example.com", password: "newpass123", isDeleted: true });
+    expect(res.status).toBe(200);
+
+    const stored = await User.findById(user._id).select("+password +isDeleted").lean();
+    expect(stored.role).toBe("Customer");
+    expect(stored.email).toBe(user.email);
+    expect(stored.password).toBe("hashedpassword");
+    expect(stored.isDeleted).toBe(false);
+    expect(stored.name).toBe("Still Me");
+  });
+
+  it.each([
+    ["a one letter name", { name: "A" }, /Name must be at least 2/],
+    ["a name over 50 characters", { name: "x".repeat(51) }, /Name is too long/],
+    ["a phone number over 20 characters", { phone: "9".repeat(21) }, /Phone number is too long/],
+    ["an address over 150 characters", { address: "x".repeat(151) }, /Address is too long/],
+  ])("rejects %s with 400 and keeps the old profile", async (_label, body, pattern) => {
+    const res = await as(user).put("/api/user/profile", body);
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(pattern);
+    expect((await User.findById(user._id)).name).toBe("Test User");
+  });
+
+  it("needs a session", async () => {
+    const res = await as(null).put("/api/user/profile", { name: "No Auth" });
+    expect(res.status).toBe(401);
+  });
+
+  describe("avatar upload (storage mocked)", () => {
+    it("stores the uploaded image's URL on the profile, together with text fields", async () => {
+      const res = await as(user)
+        .multipart("put", "/api/user/profile")
+        .field("name", "With Avatar")
+        .attach("profileImage", png, { filename: "me.png", contentType: "image/png" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.user.name).toBe("With Avatar");
+      expect(res.body.user.avatar).toBe("https://res.cloudinary.com/test/profileImage/me.png");
+      expect((await User.findById(user._id)).avatar).toBe(res.body.user.avatar);
+      expect(destroy).not.toHaveBeenCalled(); // nothing to clean up on a first upload
     });
 
-    test("should update user profile fields", async () => {
-      const res = await request(app)
-        .put("/api/user/profile")
-        .set("Authorization", `Bearer ${userToken}`)
-        .send({
-          name: "Updated Name",
-          phone: "0987654321",
-          address: "New Address",
-        })
-        .expect(200);
+    it("removes the previous Cloudinary avatar when it is replaced", async () => {
+      await User.updateOne({ _id: user._id }, { avatar: "https://res.cloudinary.com/demo/image/upload/v1/venure/users/oldpic.webp" });
+      const res = await as(user).multipart("put", "/api/user/profile").attach("profileImage", png, { filename: "new.png", contentType: "image/png" });
 
-      expect(res.body.success).toBe(true);
-      expect(res.body.message).toBe("Profile updated successfully");
-      expect(res.body.user).toHaveProperty("name", "Updated Name");
-      expect(res.body.user).toHaveProperty("phone", "0987654321");
-      expect(res.body.user).toHaveProperty("address", "New Address");
+      expect(res.status).toBe(200);
+      expect(destroy).toHaveBeenCalledWith("venure/users/oldpic");
+      expect(res.body.user.avatar).toContain("new.png");
     });
 
-    test("should update user avatar image", async () => {
-      const res = await request(app)
-        .put("/api/user/profile")
-        .set("Authorization", `Bearer ${userToken}`)
-        .attach("profileImage", path.join(__dirname, "testImage.jpg"))
-        .expect(200);
-
-      expect(res.body.success).toBe(true);
-      expect(res.body.user).toHaveProperty("avatar");
-      expect(res.body.user.avatar).toMatch(/uploads\/users\/profileImage-/);
+    it("does not touch a non-Cloudinary avatar (for example a Google profile picture)", async () => {
+      await User.updateOne({ _id: user._id }, { avatar: "https://lh3.googleusercontent.com/a/photo" });
+      await as(user).multipart("put", "/api/user/profile").attach("profileImage", png, { filename: "new.png", contentType: "image/png" });
+      expect(destroy).not.toHaveBeenCalled();
     });
 
-    test("should reject non-image uploads", async () => {
-      const res = await request(app)
-        .put("/api/user/profile")
-        .set("Authorization", `Bearer ${userToken}`)
-        .attach("profileImage", path.join(__dirname, "testFile.txt"))
-        .expect(400); // changed from 500 to 400
+    it("still saves the profile when deleting the old picture fails", async () => {
+      await User.updateOne({ _id: user._id }, { avatar: "https://res.cloudinary.com/demo/image/upload/v1/venure/users/oldpic.webp" });
+      destroy.mockRejectedValueOnce(new Error("cloudinary is down"));
+      const res = await as(user).multipart("put", "/api/user/profile").attach("profileImage", png, { filename: "new.png", contentType: "image/png" });
+      expect(res.status).toBe(200);
+      expect(res.body.user.avatar).toContain("new.png");
+    });
 
+    it("rejects a file that is not an image with 400 and leaves the avatar alone", async () => {
+      const res = await as(user)
+        .multipart("put", "/api/user/profile")
+        .field("name", "Should Not Apply")
+        .attach("profileImage", Buffer.from("just text"), { filename: "notes.txt", contentType: "text/plain" });
+
+      expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toContain("Only image files are allowed");
+      const stored = await User.findById(user._id).lean();
+      expect(stored.avatar).toBe("");
+      expect(stored.name).toBe("Test User");
     });
 
-    test("should return 401 if no auth token", async () => {
-      const res = await request(app)
-        .put("/api/user/profile")
-        .send({ name: "NoAuth" })
-        .expect(401);
+    it("rejects an image over 10 MB with 400", async () => {
+      const big = Buffer.alloc(10 * 1024 * 1024 + 1);
+      const res = await as(user).multipart("put", "/api/user/profile").attach("profileImage", big, { filename: "big.png", contentType: "image/png" });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/Upload error/);
+    });
 
-      expect(res.body.success).toBe(false);
+    it("needs a session before anything is uploaded", async () => {
+      const res = await as(null).multipart("put", "/api/user/profile").attach("profileImage", png, { filename: "me.png", contentType: "image/png" });
+      expect(res.status).toBe(401);
     });
   });
 });

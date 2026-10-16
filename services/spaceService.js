@@ -4,8 +4,6 @@ const Booking = require("../model/booking");
 const AppError = require("../utils/AppError");
 const { SHIFT_DEFAULTS } = require("./shiftService");
 
-const ACTIVE_BOOKING_STATUSES = require("./paymentService").ACTIVE_BOOKING_STATUSES;
-
 // Merges owner overrides onto the platform defaults so callers never have to
 // know about SHIFT_DEFAULTS themselves.
 const withResolvedShifts = (space) => {
@@ -53,9 +51,12 @@ const deactivateSpace = async (spaceId, ownerId) => {
     throw new AppError("Space not found or unauthorized", 404);
   }
 
+  // Only bookings that still have to happen block the removal: a hall that hosted events in the past
+  // (completed or already over) must stay removable, same rule as deleting a venue.
   const hasActiveBookings = await Booking.exists({
     space: space._id,
-    status: { $in: ACTIVE_BOOKING_STATUSES },
+    status: { $in: ["pending_deposit", "confirmed"] },
+    endTime: { $gt: new Date() },
   });
   if (hasActiveBookings) {
     throw new AppError("This space has active bookings and cannot be removed", 409);

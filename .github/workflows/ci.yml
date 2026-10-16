@@ -26,11 +26,8 @@ jobs:
         run: node -r ./test/jest.env.js -e "require('./app'); console.log('app loaded'); process.exit(0)"
 
   test:
-    name: Tests (informational until the suite is rewritten)
+    name: Tests
     runs-on: ubuntu-latest
-    # Most tests still target the pre-rewrite API. Remove continue-on-error
-    # and make this job required once they are updated.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

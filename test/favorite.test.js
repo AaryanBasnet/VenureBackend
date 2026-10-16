@@ -1,124 +1,127 @@
-const request = require("supertest");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
-const { MongoMemoryServer } = require("mongodb-memory-server");
-
-const app = require("../app");
 const User = require("../model/user");
-const Venue = require("../model/venue");
+const { startDb, stopDb, makeUser, as, makeVenue, makeSpace, objectId } = require("./helpers/api");
 
-let mongod;
-let userToken;
-let venueId;
+let owner;
+let customer;
+let venue;
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri());
+  await startDb();
+  owner = await makeUser("VenueOwner");
+  venue = await makeVenue(owner, { venueName: "Fav Hall" });
+  await makeSpace(venue, { name: "Small", capacity: 60 });
+  await makeSpace(venue, { name: "Large", capacity: 250 });
+});
 
-  // Create user
-  await request(app).post("/api/auth/register").send({
-    name: "Test User",
-    email: "test@example.com",
-    phone: "9812345678",
-    password: "test123",
-    role: "Customer",
-  });
+afterAll(stopDb);
 
-  const res = await request(app).post("/api/auth/login").send({
-    email: "test@example.com",
-    password: "test123",
-  });
-  userToken = res.body.token;
+beforeEach(async () => {
+  customer = await makeUser("Customer");
+});
 
-  // Create venue with a venue owner
-  const owner = await User.create({
-    name: "Owner",
-    email: "owner@example.com",
-    password: "hashedpassword",
-    phone: "9800000000",
-    role: "VenueOwner",
-  });
+const toggle = (user, venueId) => as(user).post(`/api/user/favorites/${venueId}`);
 
-  const venueRes = await request(app)
-    .post("/api/venueOwner/venues")
-    .set(
-      "Authorization",
-      `Bearer ${jwt.sign(
-        { _id: owner._id, role: "VenueOwner" },
-        process.env.JWT_SECRET
-      )}`
-    )
-    .send({
-      venueName: "Test Venue",
-      capacity: 100,
-      description: "Nice place",
-      pricePerHour: 5000,
-      ownerId: owner._id.toString(),
-      amenities: ["Wifi"],
-      location: {
-        address: "Kathmandu",
-        city: "Kathmandu",
-        state: "Bagmati",
-        country: "Nepal",
-      },
+describe("favorites API", () => {
+  describe("toggle", () => {
+    it("adds a venue, then removes it the second time", async () => {
+      const added = await toggle(customer, venue._id);
+      expect(added.status).toBe(200);
+      expect(added.body).toMatchObject({ success: true, message: "Added to favorites" });
+      expect(added.body.data).toEqual([String(venue._id)]);
+
+      const removed = await toggle(customer, venue._id);
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ success: true, message: "Removed from favorites" });
+      expect(removed.body.data).toEqual([]);
     });
 
-  venueId = venueRes.body.data._id;
-});
+    it("never stores the same venue twice, even for simultaneous toggles", async () => {
+      await Promise.all([1, 2, 3, 4].map(() => toggle(customer, venue._id)));
+      const stored = (await User.findById(customer._id).select("favorites").lean()).favorites;
+      // an even number of toggles always lands back on "not a favorite"
+      expect(stored).toHaveLength(0);
+      await toggle(customer, venue._id);
+      expect((await User.findById(customer._id).select("favorites").lean()).favorites).toHaveLength(1);
+    });
 
-afterAll(async () => {
-  await mongoose.connection.dropDatabase();
-  await mongoose.connection.close();
-  await mongod.stop();
-});
-describe("Favorites API", () => {
-  it("should add a venue to favorites", async () => {
-    const res = await request(app)
-      .post(`/api/user/favorites/${venueId}`)
-      .set("Authorization", `Bearer ${userToken}`);
+    it("keeps each user's favorites separate", async () => {
+      const other = await makeUser("Customer");
+      await toggle(customer, venue._id);
+      const list = await as(other).get("/api/user/favorites");
+      expect(list.body.data).toEqual([]);
+    });
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.message).toBe("Added to favorites");
-    expect(res.body.favorites).toContain(venueId.toString());
+    it("works for an Admin account too (any signed-in user)", async () => {
+      const admin = await makeUser("Admin");
+      const res = await toggle(admin, venue._id);
+      expect(res.status).toBe(200);
+    });
+
+    it("rejects a malformed venue id with 400", async () => {
+      const res = await toggle(customer, "not-an-id");
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/Invalid Venue ID/);
+    });
+
+    it("returns 404 for a venue that does not exist or was deleted", async () => {
+      expect((await toggle(customer, objectId())).status).toBe(404);
+      const gone = await makeVenue(owner, { venueName: "Gone", isDeleted: true });
+      expect((await toggle(customer, gone._id)).status).toBe(404);
+    });
+
+    it("requires a session", async () => {
+      const res = await toggle(null, venue._id);
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+    });
   });
 
-  it("should remove the same venue if already in favorites (toggle off)", async () => {
-    const res = await request(app)
-      .post(`/api/user/favorites/${venueId}`)
-      .set("Authorization", `Bearer ${userToken}`);
+  describe("list", () => {
+    it("starts empty", async () => {
+      const res = await as(customer).get("/api/user/favorites");
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, data: [] });
+    });
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.message).toBe("Removed from favorites");
-    expect(res.body.favorites).not.toContain(venueId.toString());
-  });
+    it("returns venue cards with the largest space and the number of spaces", async () => {
+      await toggle(customer, venue._id);
+      const res = await as(customer).get("/api/user/favorites");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      const [card] = res.body.data;
+      expect(card).toMatchObject({ _id: String(venue._id), venueName: "Fav Hall", maxCapacity: 250, spaceCount: 2 });
+      expect(card.location.city).toBe("Kathmandu");
+    });
 
-  it("should return list of favorite venue IDs", async () => {
-    // Add back to favorites
-    await request(app)
-      .post(`/api/user/favorites/${venueId}`)
-      .set("Authorization", `Bearer ${userToken}`);
+    it("keeps the order the user favourited them in", async () => {
+      const a = await makeVenue(owner, { venueName: "Alpha" });
+      const b = await makeVenue(owner, { venueName: "Beta" });
+      await toggle(customer, b._id);
+      await toggle(customer, venue._id);
+      await toggle(customer, a._id);
+      const res = await as(customer).get("/api/user/favorites");
+      expect(res.body.data.map((v) => v.venueName)).toEqual(["Beta", "Fav Hall", "Alpha"]);
+    });
 
-    const res = await request(app)
-      .get("/api/user/favorites")
-      .set("Authorization", `Bearer ${userToken}`);
+    it("hides venues that are no longer approved or were deleted, but keeps them if they come back", async () => {
+      const temp = await makeVenue(owner, { venueName: "Temp" });
+      await toggle(customer, temp._id);
+      await toggle(customer, venue._id);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(Array.isArray(res.body.favorites)).toBe(true);
-    expect(
-      res.body.favorites.some((v) => v._id.toString() === venueId.toString())
-    ).toBe(true);
-  });
+      await mongoose.model("Venue").updateOne({ _id: temp._id }, { status: "pending" });
+      expect((await as(customer).get("/api/user/favorites")).body.data.map((v) => v.venueName)).toEqual(["Fav Hall"]);
 
-  it("should return favorite venue details", async () => {
-    const res = await request(app)
-      .get("/api/user/favorites/venues")
-      .set("Authorization", `Bearer ${userToken}`);
+      await mongoose.model("Venue").updateOne({ _id: temp._id }, { status: "approved", isDeleted: true });
+      expect((await as(customer).get("/api/user/favorites")).body.data.map((v) => v.venueName)).toEqual(["Fav Hall"]);
 
-    expect(res.statusCode).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body[0]).toHaveProperty("venueName", "Test Venue");
+      await mongoose.model("Venue").updateOne({ _id: temp._id }, { isDeleted: false });
+      expect((await as(customer).get("/api/user/favorites")).body.data).toHaveLength(2);
+    });
+
+    it("requires a session", async () => {
+      expect((await as(null).get("/api/user/favorites")).status).toBe(401);
+    });
   });
 });
