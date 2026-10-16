@@ -2,6 +2,10 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# The app runs as the unprivileged "node" user, so /app and its log folder must belong to it
+# (a root-owned /app made the logger's mkdir fail and the server crash on start)
+RUN mkdir -p /app/logs && chown node:node /app /app/logs
+
 ENV NODE_ENV=production
 
 # Install production dependencies only, exactly as locked
