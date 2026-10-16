@@ -6,7 +6,14 @@ const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
 const esewa = require("../utils/esewa");
 
-const ACTIVE_BOOKING_STATUSES = ["pending_deposit", "confirmed", "completed"];
+const { ACTIVE_BOOKING_STATUSES, findConflict } = require("./slotService");
+
+// eSewa writes amounts like "20000", "20000.00" or "20,000.0". Anything else is not an amount.
+const AMOUNT_PATTERN = /^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/;
+const parseEsewaAmount = (raw) => {
+  const text = String(raw ?? "").trim();
+  return AMOUNT_PATTERN.test(text) ? Number(text.replace(/,/g, "")) : NaN;
+};
 
 const frontendBase = () => process.env.FRONTEND_URL.split(",")[0].trim().replace(/\/$/, "");
 
@@ -30,13 +37,10 @@ const initiateDeposit = async ({ quotationId }, userId) => {
 
   // Soft pre-check only; the authoritative race defense is the insert-first
   // claim in bookingService.createBookingFromQuotation.
-  const conflict = await Booking.findOne({
-    space: quotation.space,
-    status: { $in: ACTIVE_BOOKING_STATUSES },
-    startTime: { $lt: quotation.endTime },
-    endTime: { $gt: quotation.startTime },
-  });
-  if (conflict) throw new AppError("This space is already booked during this time slot", 409);
+  if (await Booking.exists({ quotation: quotation._id, status: { $in: ACTIVE_BOOKING_STATUSES } })) {
+    throw new AppError("This quotation has already been booked", 409);
+  }
+  if (await findConflict(quotation)) throw new AppError("This space is already booked during this time slot", 409);
 
   return buildEsewaForm(quotation, userId);
 };
@@ -98,12 +102,15 @@ const verifyEsewaDeposit = async (encoded, userId) => {
   if (!attempt || attempt.customer.toString() !== userId.toString()) {
     throw new AppError("Payment not found for this account.", 404);
   }
-  if (Number(String(body.total_amount).replace(/,/g, "")) !== attempt.amountNPR) {
+  if (parseEsewaAmount(body.total_amount) !== attempt.amountNPR) {
+    throw new AppError("Payment does not match this booking.", 400);
+  }
+  if (body.product_code !== undefined && body.product_code !== esewa.getConfig().merchantCode) {
     throw new AppError("Payment does not match this booking.", 400);
   }
   if (body.status !== "COMPLETE") {
-    attempt.status = "failed";
-    await attempt.save();
+    // A late "cancelled" redirect must never undo a payment that already went through
+    await PaymentAttempt.updateOne({ _id: attempt._id, status: "initiated" }, { status: "failed" });
     throw new AppError("The eSewa payment was not completed.", 400);
   }
 
@@ -114,13 +121,24 @@ const verifyEsewaDeposit = async (encoded, userId) => {
     logger.error({ message: "eSewa status check failed", transactionUuid: attempt.transactionUuid, error: err.message });
     throw new AppError("We could not confirm the payment with eSewa. Please try again in a moment.", 502);
   }
-  if (remote.status !== "COMPLETE") {
+  if (!remote || remote.status !== "COMPLETE") {
     throw new AppError("eSewa has not confirmed this payment.", 400);
   }
+  // eSewa's own answer must describe this very payment, not merely say "complete"
+  if (remote.transaction_uuid !== undefined && remote.transaction_uuid !== attempt.transactionUuid) {
+    throw new AppError("eSewa has not confirmed this payment.", 400);
+  }
+  if (remote.total_amount !== undefined && parseEsewaAmount(remote.total_amount) !== attempt.amountNPR) {
+    throw new AppError("Payment does not match this booking.", 400);
+  }
 
-  attempt.status = "completed";
-  attempt.transactionCode = body.transaction_code || remote.ref_id;
-  await attempt.save();
+  // Only move forward: a payment that is already completed or flagged for refund keeps that state
+  const code = body.transaction_code || remote.ref_id;
+  await PaymentAttempt.updateOne(
+    { _id: attempt._id, status: { $in: ["initiated", "failed"] } },
+    { status: "completed", transactionCode: code }
+  );
+  attempt.transactionCode = attempt.transactionCode || code;
 
   return {
     quotationId: attempt.quotation,
@@ -129,4 +147,4 @@ const verifyEsewaDeposit = async (encoded, userId) => {
   };
 };
 
-module.exports = { initiateDeposit, verifyEsewaDeposit, ACTIVE_BOOKING_STATUSES };
+module.exports = { initiateDeposit, verifyEsewaDeposit, ACTIVE_BOOKING_STATUSES, parseEsewaAmount };

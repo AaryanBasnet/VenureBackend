@@ -92,7 +92,8 @@ const seedData = async () => {
 
     await ensureUser({ name: 'Admin User', email: 'admin@venure.com', password: 'Password123!', role: 'Admin' });
     const owner = await ensureUser({ name: 'Venue Owner', email: 'owner@venure.com', password: 'Password123!', role: 'VenueOwner' });
-    logger.info('Seeding: Admin and owner ready.');
+    await ensureUser({ name: 'Test Customer', email: 'customer@venure.com', password: 'Password123!', role: 'Customer' });
+    logger.info('Seeding: admin, owner and customer accounts ready.');
 
     // Upsert by name so re-running never creates duplicates
     for (const { coords, capacity, pricePerHour, ...venue } of SAMPLE_VENUES) {
@@ -115,6 +116,9 @@ const seedData = async () => {
         { upsert: true, setDefaultsOnInsert: true, runValidators: true }
       );
     }
+
+    await require('../services/landingService').ensureSeed();
+    logger.info('Seeding: home page content ready.');
 
     const approved = await Venue.countDocuments({ status: 'approved', isDeleted: false });
     logger.info(`Seeding complete! ${approved} approved venues in database.`);

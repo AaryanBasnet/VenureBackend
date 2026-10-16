@@ -66,7 +66,7 @@ const settleBalance = asyncHandler(async (req, res) => {
    STATUS MODIFICATIONS
 ======================== */
 const cancelBooking = asyncHandler(async (req, res) => {
-  const booking = await bookingService.cancelBooking(req.params.id, req.user);
+  const booking = await bookingService.cancelBooking(req.params.id, req.user, req.app.get("io"));
 
   res.status(200).json({
     success: true,

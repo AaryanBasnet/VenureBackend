@@ -83,6 +83,30 @@ const SpaceSchema = new mongoose.Schema(
 );
 
 SpaceSchema.index({ venue: 1, isActive: 1 });
+SpaceSchema.index({ venue: 1, isActive: 1, capacity: -1 });
+
+// Keep Venue.maxCapacity / Venue.spaceCount (largest active space, active space count) in step with
+// space writes, so public lists need no per-request aggregation. Recomputed from the truth every
+// time, so concurrent writes converge on the right value.
+const syncVenueCapacity = async (venueId) => {
+  if (!venueId) return;
+  const Venue = mongoose.model("Venue");
+  const [row] = await mongoose.model("Space").aggregate([
+    { $match: { venue: venueId, isActive: true } },
+    { $group: { _id: null, maxCapacity: { $max: "$capacity" }, spaceCount: { $sum: 1 } } },
+  ]);
+  await Venue.updateOne(
+    { _id: venueId },
+    { $set: { maxCapacity: row?.maxCapacity ?? 0, spaceCount: row?.spaceCount ?? 0 } },
+    { timestamps: false }
+  );
+};
+
+SpaceSchema.post("save", (doc) => syncVenueCapacity(doc.venue));
+SpaceSchema.post("findOneAndUpdate", (doc) => (doc ? syncVenueCapacity(doc.venue) : undefined));
+SpaceSchema.post("findOneAndDelete", (doc) => (doc ? syncVenueCapacity(doc.venue) : undefined));
+SpaceSchema.post("deleteOne", { document: true, query: false }, (doc) => syncVenueCapacity(doc.venue));
 
 module.exports = mongoose.models.Space || mongoose.model("Space", SpaceSchema);
 module.exports.SHIFT_NAMES = SHIFT_NAMES;
+module.exports.syncVenueCapacity = syncVenueCapacity;

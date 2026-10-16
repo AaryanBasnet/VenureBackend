@@ -13,5 +13,6 @@ const messageSchema = new mongoose.Schema(
 
 // Extremely important for fast fetching of messages inside a specific chat window
 messageSchema.index({ chatId: 1, createdAt: 1 });
+messageSchema.index({ receiver: 1, seen: 1, chatId: 1 }); // unread counts (header badge, per-chat badges)
 
 module.exports = mongoose.models.Message || mongoose.model("Message", messageSchema);

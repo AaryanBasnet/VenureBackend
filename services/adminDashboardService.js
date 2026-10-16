@@ -1,6 +1,7 @@
 ﻿const ActivityLog = require("../model/activityLog");
 const Booking = require("../model/booking");
 const logger = require("../utils/logger");
+const publicCache = require("../utils/publicCache");
 
 /* =========================================================================
    ACTIVITY LOGS
@@ -18,13 +19,33 @@ const getRecentActivityLogs = async (limit = 50) => {
   return await ActivityLog.find()
     .sort("-createdAt")
     .limit(limit)
-    .populate("createdBy", "name email");
+    .populate("createdBy", "name email")
+    .lean();
 };
 
 /* =========================================================================
    GLOBAL ADMIN STATISTICS
 ========================================================================= */
+// The year's earnings are a full-year aggregation over every booking: computed at most once per
+// EARNINGS_TTL_MS per process (the dashboard tolerates figures that are a few seconds old). Off under jest.
+const EARNINGS_TTL_MS = 30000;
+let earningsMemo = null; // { year, at, promise }
+
 const getGlobalMonthlyEarnings = async () => {
+  const year = new Date().getFullYear();
+  const useMemo = publicCache.enabled();
+  if (useMemo && earningsMemo && earningsMemo.year === year && Date.now() - earningsMemo.at < EARNINGS_TTL_MS) {
+    return earningsMemo.promise;
+  }
+  const promise = computeGlobalMonthlyEarnings();
+  if (useMemo) {
+    earningsMemo = { year, at: Date.now(), promise };
+    promise.catch(() => { if (earningsMemo && earningsMemo.promise === promise) earningsMemo = null; });
+  }
+  return promise;
+};
+
+const computeGlobalMonthlyEarnings = async () => {
   const currentYear = new Date().getFullYear();
   const startOfYear = new Date(currentYear, 0, 1); 
   const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59); 

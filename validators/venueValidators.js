@@ -62,7 +62,9 @@ const searchVenuesSchema = z.object({
   radius: z.coerce.number().default(10), // Miles
   guests: z.coerce.number().int().positive().optional(), // needs a space that holds at least this many
   amenities: z.string().max(300).optional(), // comma separated; a venue must have all of them
-  sort: z.enum(["newest", "rating"]).optional(),
+  minPrice: z.coerce.number().int().min(0).optional(), // NPR per plate: some package must cost at least this
+  maxPrice: z.coerce.number().int().min(0).optional(), // ...and some package at most this
+  sort: z.enum(["newest", "rating", "price_asc", "price_desc", "popular"]).optional(),
   page: z.coerce.number().default(1),
   limit: z.coerce.number().default(6),
 });

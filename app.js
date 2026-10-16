@@ -27,6 +27,7 @@ const reviewRoutes = require("./route/reviewRoutes");
 const contactRoutes = require("./route/contactRoutes");
 const paymentRoutes = require("./route/paymentRoutes");
 const newsletterRoutes = require("./route/newsletterRoutes");
+const landingRoutes = require("./route/landingRoutes");
 
 const errorHandler = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
@@ -91,8 +92,12 @@ app.use(compression());//reduce size of data sent to server to frontend
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 } else {
+  // LOG_REQUESTS=all (default) | errors (only status >= 400) | off. The access log goes through winston to
+  // two files and the console on every request; see docs/PERFORMANCE.md for what that costs under load.
+  const mode = process.env.LOG_REQUESTS || "all";
   app.use(morgan("combined", {
     stream: { write: (message) => logger.info(message.trim()) },
+    skip: (req, res) => mode === "off" || (mode === "errors" && res.statusCode < 400),
   }));
 }
 
@@ -108,6 +113,8 @@ app.use(express.json({ limit: "10kb" }));
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
   max: 1000, // per IP; the SPA makes many calls per page and users can share an IP
+  // Local testing only: DISABLE_RATE_LIMITS=1 turns the global limit off (never in production)
+  skip: () => process.env.DISABLE_RATE_LIMITS === "1" && process.env.NODE_ENV !== "production",
   message: {
     success: false,
     message: "Too many requests, please try again later.",
@@ -121,6 +128,13 @@ app.use(cookieParser());
 // app.use(mongoSanitize({
 //   replaceWith: '_' 
 // }));
+
+/* ========================
+   HEALTH CHECK (hosting platforms and uptime monitors; no database access, no auth)
+======================== */
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ success: true, status: "ok", uptime: Math.round(process.uptime()) });
+});
 
 /* ========================
    TEST ROUTES
@@ -154,6 +168,7 @@ app.use("/api", reviewRoutes);
 // app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/newsletter", newsletterRoutes);
+app.use("/api/landing", landingRoutes);
 
 /* ========================
    HEALTH CHECK

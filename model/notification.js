@@ -28,4 +28,8 @@ const notificationSchema = new mongoose.Schema({
   },
 });
 
+// "My notifications" (newest first) and "mark all read"
+notificationSchema.index({ recipient: 1, createdAt: -1 });
+notificationSchema.index({ recipient: 1, read: 1 });
+
 module.exports = mongoose.models.Notification || mongoose.model("Notification", notificationSchema);

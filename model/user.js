@@ -66,6 +66,9 @@ const userSchema = new mongoose.Schema({
   resetPasswordAttempts: { type: Number, default: 0, select: false },
 });
 
+// Admin user list (role filter, soft-delete filter, newest first)
+userSchema.index({ role: 1, isDeleted: 1, createdAt: -1 });
+
 /* =========================================================================
    SECURITY LAYER: Fixes raw token leak risk in the reset code helper
 ========================================================================= */

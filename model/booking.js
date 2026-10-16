@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { SHIFT_NAMES } = require("./space");
+const { slotKeysFor } = require("../utils/slotKeys");
 
 const cancellationTierSchema = new mongoose.Schema(
   { minDaysBefore: Number, refundPercentage: Number },
@@ -112,15 +113,37 @@ const bookingSchema = new mongoose.Schema(
     // Set only while a slot is being claimed. MongoDB's TTL monitor deletes the
     // document if the server dies mid-claim, so a crash can't block a slot forever.
     holdClaimExpiresAt: Date,
+    // One "<space>:<minute>" key per minute the booking occupies (utils/slotKeys.js). A partial unique index
+    // over these makes MongoDB itself refuse an overlapping active booking. `default: undefined` matters: an
+    // empty array would be indexed as a single null key and collide with every other empty one.
+    slotKeys: { type: [String], default: undefined, select: false },
   },
   { timestamps: true }
 );
+
+// Shift bookings always get their minute keys; the unique index below then guards the slot.
+bookingSchema.pre("validate", function setSlotKeys() {
+  if (this.isNew && this.slotKeys === undefined && this.space && this.startTime && this.endTime) {
+    const keys = slotKeysFor(this.space, this.startTime, this.endTime);
+    if (keys) this.slotKeys = keys;
+  }
+});
 
 /* =========================================================================
    ENTERPRISE LAYER: Collision Index
    Speeds up the query when checking if a space is already booked
 ========================================================================= */
 bookingSchema.index({ space: 1, startTime: 1, endTime: 1 });
+// Only active bookings hold keys: cancelling (or deleting) a claim frees the slot with no further bookkeeping.
+bookingSchema.index(
+  { slotKeys: 1 },
+  {
+    unique: true,
+    name: "active_slot_keys_unique",
+    // $exists keeps older bookings (no keys) out of the index: they would all collide on a null key
+    partialFilterExpression: { status: { $in: ["pending_deposit", "confirmed", "completed"] }, slotKeys: { $exists: true } },
+  }
+);
 bookingSchema.index({ venue: 1 }); // kept for owner/admin aggregations
 bookingSchema.index({ customer: 1 }); // Fast lookup for user dashboards
 bookingSchema.index({ holdClaimExpiresAt: 1 }, { expireAfterSeconds: 0 }); // Only affects documents that have the field

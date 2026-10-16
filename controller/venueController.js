@@ -1,17 +1,18 @@
 const asyncHandler = require("../utils/asyncHandler");
 const venueService = require("../services/venueService");
+const { sendCached } = require("../utils/publicCache");
 
 /* ========================
    PUBLIC / USER CONTROLLERS
 ======================== */
-exports.getAllApprovedVenues = asyncHandler(async (req, res) => {
-  const result = await venueService.getApprovedVenues(req.query);
+// Hot public reads go through utils/publicCache (TTL + invalidation on writes, ETag, pre-gzipped)
+const cacheKeyFor = (prefix, query) =>
+  `${prefix}:${JSON.stringify(Object.keys(query).sort().map((k) => [k, query[k]]))}`;
 
-  res.status(200).json({
-    success: true,
-    data: result.venues,
-    total: result.total,
-    pages: result.pages,
+exports.getAllApprovedVenues = asyncHandler(async (req, res) => {
+  await sendCached(req, res, cacheKeyFor("venues", req.query), { ttlMs: 30000, maxAgeSec: 10 }, async () => {
+    const result = await venueService.getApprovedVenues(req.query);
+    return { success: true, data: result.venues, total: result.total, pages: result.pages };
   });
 });
 
@@ -22,30 +23,24 @@ exports.getVenueAvailability = asyncHandler(async (req, res) => {
 });
 
 exports.getVenueById = asyncHandler(async (req, res) => {
-  const venue = await venueService.getVenueById(req.params.id);
-
-  res.status(200).json({
+  await sendCached(req, res, `venue:${req.params.id}`, { ttlMs: 30000, maxAgeSec: 5 }, async () => ({
     success: true,
-    data: venue,
-  });
+    data: await venueService.getVenueById(req.params.id),
+  }));
 });
 
 exports.getCategoryCounts = asyncHandler(async (req, res) => {
-  const counts = await venueService.getCategoryCounts();
-
-  res.status(200).json({
+  await sendCached(req, res, "categoryCounts", { ttlMs: 60000, maxAgeSec: 30 }, async () => ({
     success: true,
-    data: counts,
-  });
+    data: await venueService.getCategoryCounts(),
+  }));
 });
 
 exports.getFeaturedVenues = asyncHandler(async (req, res) => {
-  const venues = await venueService.getFeaturedVenues();
-
-  res.status(200).json({
+  await sendCached(req, res, "featured", { ttlMs: 60000, maxAgeSec: 30 }, async () => ({
     success: true,
-    data: venues,
-  });
+    data: await venueService.getFeaturedVenues(),
+  }));
 });
 
 /* ========================

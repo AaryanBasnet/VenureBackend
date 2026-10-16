@@ -2,9 +2,11 @@
 const AppError = require("../utils/AppError");
 
 const getUserNotifications = async (userId, limit = 50) => {
+  // index: recipient + createdAt; lean: read-only response
   return await Notification.find({ recipient: userId })
     .sort("-createdAt")
-    .limit(limit);
+    .limit(limit)
+    .lean();
 };
 
 const markAsRead = async (notificationId, userId) => {

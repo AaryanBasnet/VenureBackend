@@ -21,7 +21,7 @@ exports.addReview = asyncHandler(async (req, res) => {
 });
 
 exports.getReviews = asyncHandler(async (req, res) => {
-  const reviews = await reviewService.getVenueReviews(req.params.venueId);
+  const reviews = await reviewService.getVenueReviews(req.params.venueId, req.query);
 
   res.status(200).json({
     success: true,
@@ -30,7 +30,7 @@ exports.getReviews = asyncHandler(async (req, res) => {
 });
 
 exports.getReviewsForOwnerVenues = asyncHandler(async (req, res) => {
-  const reviews = await reviewService.getReviewsForOwnerVenues(req.user._id);
+  const reviews = await reviewService.getReviewsForOwnerVenues(req.user._id, req.query);
 
   res.status(200).json({
     success: true,
@@ -70,5 +70,14 @@ exports.toggleFeaturedStatus = asyncHandler(async (req, res) => {
     success: true,
     message: review.isFeatured ? "Review is now featured" : "Review removed from featured",
     data: review,
+  });
+});
+
+exports.getAdminReviews = asyncHandler(async (req, res) => {
+  const data = await reviewService.getAdminReviews(req.query);
+
+  res.status(200).json({
+    success: true,
+    data,
   });
 });

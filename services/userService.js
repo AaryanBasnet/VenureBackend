@@ -7,7 +7,7 @@ const logger = require("../utils/logger");
 const escapeRegex = require("../utils/escapeRegex");
 
 const getUserProfile = async (userId) => {
-  const user = await User.findById(userId); 
+  const user = await User.findById(userId).lean();
   if (!user) throw new AppError("User not found", 404);
   return user;
 };
@@ -65,10 +65,12 @@ const getPaginatedUsers = async (filters) => {
   if (role) query.role = role;
 
   // Fetch users
-  const users = await User.find(query).skip(skip).limit(limit).lean();
-  const totalUsers = await User.countDocuments(query);
+  const [users, totalUsers] = await Promise.all([
+    User.find(query).skip(skip).limit(limit).lean(),
+    User.countDocuments(query),
+  ]);
 
-  // Aggregate bookings for these users
+  // Aggregate bookings for these users (index: bookings.customer)
   const userIds = users.map((u) => u._id);
   const bookingsCount = await Booking.aggregate([
     { $match: { customer: { $in: userIds } } },

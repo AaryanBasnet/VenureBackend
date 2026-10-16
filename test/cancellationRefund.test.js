@@ -5,7 +5,8 @@ const Booking = require("../model/booking");
 const Payment = require("../model/payment");
 const Venue = require("../model/venue");
 const Space = require("../model/space");
-const { cancelBooking, getRefundPercentage, CANCELLATION_REFUND_TIERS } = require("../services/bookingService");
+const Notification = require("../model/notification");
+const { cancelBooking, notifyBookingConfirmed, getRefundPercentage, CANCELLATION_REFUND_TIERS } = require("../services/bookingService");
 
 let mongod;
 let venue;
@@ -79,6 +80,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await Booking.deleteMany({});
   await Payment.deleteMany({});
+  await Notification.deleteMany({});
 });
 
 describe("getRefundPercentage (pure)", () => {
@@ -158,5 +160,45 @@ describe("cancelBooking refund amounts", () => {
     await cancelBooking(booking._id, { _id: adminId, role: "Admin" });
 
     expect(await refundOwed(booking)).toBe(DEPOSIT_AMOUNT);
+  });
+});
+
+describe("telling the other side", () => {
+  it("notifies the venue owner when the customer cancels", async () => {
+    const customerId = new mongoose.Types.ObjectId();
+    const booking = await createConfirmedBooking(40, customerId);
+
+    await cancelBooking(booking._id, { _id: customerId, role: "Customer" });
+
+    const notes = await Notification.find({ recipient: ownerId });
+    expect(notes).toHaveLength(1);
+    expect(notes[0].message).toMatch(/Refund Hall.*cancelled by the customer/);
+    expect(notes[0].link).toBe("/owner/bookings");
+    expect(await Notification.countDocuments({ recipient: customerId })).toBe(0);
+  });
+
+  it("notifies the customer, and promises the full deposit back, when the owner cancels", async () => {
+    const customerId = new mongoose.Types.ObjectId();
+    const booking = await createConfirmedBooking(2, customerId);
+
+    await cancelBooking(booking._id, { _id: ownerId, role: "VenueOwner" });
+
+    const notes = await Notification.find({ recipient: customerId });
+    expect(notes).toHaveLength(1);
+    expect(notes[0].message).toMatch(/cancelled by the venue.*full deposit/);
+    expect(notes[0].link).toBe("/my-bookings");
+    expect(await Notification.countDocuments({ recipient: ownerId })).toBe(0);
+  });
+
+  it("notifies both sides when a deposit is paid and the date is confirmed", async () => {
+    const customerId = new mongoose.Types.ObjectId();
+    const booking = await createConfirmedBooking(40, customerId);
+
+    await notifyBookingConfirmed(booking, null);
+
+    const owner = await Notification.findOne({ recipient: ownerId });
+    expect(owner.message).toMatch(/A deposit was paid and "Refund Hall" is booked for/);
+    const customer = await Notification.findOne({ recipient: customerId });
+    expect(customer.message).toMatch(/Your date at "Refund Hall" on .* is confirmed/);
   });
 });

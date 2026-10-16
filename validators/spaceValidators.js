@@ -3,8 +3,8 @@ const { SHIFT_NAMES } = require("../model/space");
 
 const shiftOverrideSchema = z.object({
   shift: z.enum(SHIFT_NAMES),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:mm format"),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:mm format"),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:mm format (00:00 to 23:59)"),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:mm format (00:00 to 23:59)"),
 });
 
 const createSpaceSchema = z.object({

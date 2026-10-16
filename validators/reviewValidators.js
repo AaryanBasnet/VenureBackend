@@ -7,4 +7,12 @@ const createReviewSchema = z.object({
   comment: z.string().max(1000, "Comment cannot exceed 1000 characters"),
 });
 
-module.exports = { createReviewSchema };
+const adminReviewQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  rating: z.coerce.number().int().min(1).max(5).optional(),
+  featured: z.enum(["true", "false"]).optional(),
+  search: z.string().trim().max(100).optional(),
+});
+
+module.exports = { createReviewSchema, adminReviewQuerySchema };

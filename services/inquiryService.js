@@ -4,6 +4,7 @@ const Space = require("../model/space");
 const Notification = require("../model/notification");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
+const { nepalDaysBetween, nepalCalendarDay, lastBookableDay } = require("./shiftService");
 
 const notifyOwner = async (venue, message, link, io) => {
   if (!venue.owner) return;
@@ -16,7 +17,22 @@ const notifyCustomer = async (customerId, message, link, io) => {
   if (io) io.to(customerId.toString()).emit("newNotification", notification);
 };
 
+// A request needs at least a day's notice (tomorrow in Kathmandu is the earliest date) and cannot be
+// further ahead than the date picker allows. "Tomorrow" is the Kathmandu calendar day, not the server's.
+const assertPreferredDate = (preferredDate, now = new Date()) => {
+  const date = new Date(preferredDate);
+  if (Number.isNaN(date.getTime())) throw new AppError("Invalid date", 400);
+  if (nepalDaysBetween(now, date) < 1) {
+    throw new AppError("Tomorrow is the earliest date you can ask for, so the venue has time to reply", 400);
+  }
+  if (nepalCalendarDay(date) > lastBookableDay(now)) {
+    throw new AppError("That date is too far ahead to request", 400);
+  }
+};
+
 const createInquiry = async (payload, customerId, io) => {
+  assertPreferredDate(payload.preferredDate);
+
   const venue = await Venue.findOne({ _id: payload.venue, isDeleted: false, status: "approved" });
   if (!venue) throw new AppError("Venue not found", 404);
 
@@ -111,6 +127,7 @@ const declineInquiry = async (inquiryId, ownerId, io) => {
 };
 
 module.exports = {
+  assertPreferredDate,
   createInquiry,
   getInquiriesForCustomer,
   getInquiriesForOwner,

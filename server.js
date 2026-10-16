@@ -52,6 +52,8 @@ const startServer = async () => {
   try {
     await connectDB();
     logger.info(" Database connected successfully.");
+    // Home page copy: create the default document if it is missing (never overwrites edits)
+    await require("./services/landingService").ensureSeed().catch((err) => logger.warn(`Landing seed skipped: ${err.message}`));
     
     server.listen(PORT, () => {
       logger.info(`🚀 Enterprise Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);

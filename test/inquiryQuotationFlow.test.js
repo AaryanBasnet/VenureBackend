@@ -177,6 +177,52 @@ describe("Inquiry -> Quotation -> Deposit -> Booking", () => {
     expect((await Inquiry.findById(inquiry._id)).status).toBe("pending");
   });
 
+  describe("a slot somebody else has already booked", () => {
+    const bookSlot = async (otherCustomer) => {
+      const inquiry = await inquiryService.createInquiry(inquiryPayload(), otherCustomer._id, null);
+      const quotation = await quotationService.createQuotation(inquiry._id, owner._id, quotationPayload(), null);
+      await quotationService.acceptQuotation(quotation._id, otherCustomer._id);
+      return bookingService.createBookingFromQuotation(
+        { quotationId: quotation._id, transactionId: `TX-${Date.now()}-${Math.random()}`, amountNPR: quotation.depositAmount },
+        otherCustomer._id
+      );
+    };
+
+    it("is not quoted to a second customer", async () => {
+      const other = await User.create({ name: "Other", email: `other-${Date.now()}@flow.test`, password: "hashedpassword", role: "Customer" });
+      await bookSlot(other);
+
+      const inquiry = await inquiryService.createInquiry(inquiryPayload(), customer._id, null);
+      await expect(
+        quotationService.createQuotation(inquiry._id, owner._id, quotationPayload(), null)
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect((await Inquiry.findById(inquiry._id)).status).toBe("pending");
+    });
+
+    it("cannot be accepted: the quotation stays sent instead of becoming accepted and unpayable", async () => {
+      const other = await User.create({ name: "Other 2", email: `other2-${Date.now()}@flow.test`, password: "hashedpassword", role: "Customer" });
+      const inquiry = await inquiryService.createInquiry(inquiryPayload(), customer._id, null);
+      const quotation = await quotationService.createQuotation(inquiry._id, owner._id, quotationPayload(), null);
+
+      await bookSlot(other); // somebody else pays first
+
+      await expect(quotationService.acceptQuotation(quotation._id, customer._id)).rejects.toMatchObject({ statusCode: 409 });
+      expect((await Quotation.findById(quotation._id)).status).toBe("sent");
+      expect((await Inquiry.findById(inquiry._id)).status).toBe("quoted");
+    });
+
+    it("is free to quote and accept again once the booking is cancelled", async () => {
+      const other = await User.create({ name: "Other 3", email: `other3-${Date.now()}@flow.test`, password: "hashedpassword", role: "Customer" });
+      const booking = await bookSlot(other);
+      await bookingService.cancelBooking(booking._id, { _id: other._id, role: "Customer" });
+
+      const inquiry = await inquiryService.createInquiry(inquiryPayload(), customer._id, null);
+      const quotation = await quotationService.createQuotation(inquiry._id, owner._id, quotationPayload(), null);
+      const accepted = await quotationService.acceptQuotation(quotation._id, customer._id);
+      expect(accepted.status).toBe("accepted");
+    });
+  });
+
   it("rejects a deposit percentage outside the platform-allowed range", async () => {
     const inquiry = await inquiryService.createInquiry(inquiryPayload(), customer._id, null);
 

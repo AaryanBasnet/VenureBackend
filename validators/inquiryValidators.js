@@ -8,7 +8,7 @@ const createInquirySchema = z.object({
   space: objectIdSchema.optional(), // customer may leave this to the owner to recommend
   preferredDate: z.string().datetime({ message: "Invalid date. Must be ISO 8601 format." }),
   preferredShift: z.enum(SHIFT_NAMES).optional(),
-  numberOfGuests: z.number().int().positive("Number of guests must be at least 1"),
+  numberOfGuests: z.number().int().positive("Number of guests must be at least 1").max(100000),
   eventType: z.string().min(2, "Event type must be at least 2 characters"),
   message: z.string().max(1000).optional(),
   contactName: z.string().min(2, "Contact name is required"),
