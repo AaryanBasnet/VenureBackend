@@ -211,7 +211,8 @@ const getApprovedVenues = async (filters) => {
   // MAPS INTEGRATION
   const nearby = lng && lat && radius;
   if (nearby) {
-    query.geoCoordinates = {
+    // The 2dsphere index is on geoCoordinates.coordinates ([lng, lat]); a query on the parent object finds no usable index
+    query["geoCoordinates.coordinates"] = {
       $near: {
         $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
         $maxDistance: parseFloat(radius) * 1609.34, // Miles to meters
@@ -225,7 +226,7 @@ const getApprovedVenues = async (filters) => {
   // $near is not allowed in countDocuments: count the same circle with $geoWithin instead
   const countQuery = { ...query };
   if (nearby) {
-    countQuery.geoCoordinates = {
+    countQuery["geoCoordinates.coordinates"] = {
       $geoWithin: { $centerSphere: [[parseFloat(lng), parseFloat(lat)], (parseFloat(radius) * 1609.34) / 6378100] },
     };
   }

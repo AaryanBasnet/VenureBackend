@@ -13,6 +13,8 @@ const { notifyOwner, notifyCustomer } = require("./inquiryService");
 
 // How long an unfinished slot claim may live before MongoDB removes it
 const CLAIM_TTL_MS = 2 * 60 * 1000;
+// A payment record is written one insert before its claim; without a booking for longer than this it is orphaned
+const PAYMENT_TO_CLAIM_GRACE_MS = 2000;
 
 // Snapshotted onto every Booking at creation time so cancellation terms stay
 // auditable even if the platform-wide policy changes later.
@@ -89,8 +91,13 @@ const settleReplay = async (transactionId, customerId, quotationId) => {
       booking.$locals.replayed = true;
       return booking;
     }
-    const claimAlive =
-      booking && booking.status === "pending_deposit" && !(booking.holdClaimExpiresAt && booking.holdClaimExpiresAt <= new Date());
+    // The payment record is written just BEFORE the claim, so a payment without a booking can simply be a request
+    // that is one insert away from creating it: that counts as alive for a short grace (releasing it here would
+    // delete the payment of a booking that is about to be confirmed). A claim removed by the TTL monitor leaves the
+    // same picture, which is why the grace is short.
+    const claimAlive = booking
+      ? booking.status === "pending_deposit" && !(booking.holdClaimExpiresAt && booking.holdClaimExpiresAt <= new Date())
+      : Date.now() - payment.createdAt.getTime() < PAYMENT_TO_CLAIM_GRACE_MS;
     if (claimAlive) {
       await new Promise((resolve) => setTimeout(resolve, 100)); // another request is confirming it right now
       continue;
@@ -134,6 +141,9 @@ const createBookingFromQuotation = async ({ quotationId, transactionId, amountNP
 
   // One quotation, one booking: a second payment for it is refunded rather than booked twice
   if (await Booking.exists({ quotation: quotation._id, ...liveBookingFilter() })) {
+    // ...unless that booking is the one this very payment (a simultaneous delivery of the same callback) is creating
+    const replayed = await settleReplay(transactionId, customerId, quotation._id);
+    if (replayed) return replayed;
     await owed("This quotation has already been booked", 409);
   }
 

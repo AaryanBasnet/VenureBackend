@@ -88,8 +88,10 @@ SpaceSchema.index({ venue: 1, isActive: 1, capacity: -1 });
 // Keep Venue.maxCapacity / Venue.spaceCount (largest active space, active space count) in step with
 // space writes, so public lists need no per-request aggregation. Recomputed from the truth every
 // time, so concurrent writes converge on the right value.
-const syncVenueCapacity = async (venueId) => {
-  if (!venueId) return;
+const syncVenueCapacity = async (venueRef) => {
+  if (!venueRef) return;
+  // doc.venue is a whole Venue document when the space was loaded with populate("venue"): aggregation does not cast it
+  const venueId = venueRef._id ?? venueRef;
   const Venue = mongoose.model("Venue");
   const [row] = await mongoose.model("Space").aggregate([
     { $match: { venue: venueId, isActive: true } },
