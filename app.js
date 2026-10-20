@@ -77,6 +77,9 @@ app.use(
       }
     },
     credentials: true,
+    // The browser may reuse a preflight answer for a day, so a cross-site page does not pay an extra round trip on every
+    // request (browsers cap this at 2 hours or less)
+    maxAge: 86400,
   })
 );
 
