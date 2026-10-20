@@ -190,9 +190,9 @@ const getApprovedVenues = async (filters) => {
   const query = { status: "approved", isDeleted: false };
 
   if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
-  if (city) query["location.city"] = String(city);
-  if (category) query.category = category;
-  if (spaceType) query.spaceTypes = spaceType; // some active space of this kind
+  if (city) query["location.city"] = { $eq: String(city) };
+  if (category) query.category = { $eq: String(category) };
+  if (spaceType) query.spaceTypes = { $eq: String(spaceType) }; // some active space of this kind
   if (amenities) {
     const wanted = String(amenities).split(",").map((a) => a.trim()).filter(Boolean);
     if (wanted.length) query.amenities = { $all: wanted };

@@ -65,7 +65,7 @@ const submitApplication = async (data, files = {}) => {
   if (!registration) throw new AppError("Upload your business registration certificate", 400);
   if (!pan) throw new AppError("Upload your PAN certificate", 400);
 
-  if (await User.exists({ email: data.email })) {
+  if (await User.exists({ email: { $eq: String(data.email) } })) {
     throw new AppError("This email already has an account. Sign in, or apply with a different email.", 409);
   }
 
@@ -110,8 +110,9 @@ const submitApplication = async (data, files = {}) => {
 
 // "available", "has_account" (sign in instead) or "pending" (an application for it is already being reviewed)
 const checkEmail = async (email) => {
-  if (await User.exists({ email })) return "has_account";
-  if (await VenueApplication.exists({ email, status: "pending" })) return "pending";
+  const address = String(email);
+  if (await User.exists({ email: { $eq: address } })) return "has_account";
+  if (await VenueApplication.exists({ email: { $eq: address }, status: "pending" })) return "pending";
   return "available";
 };
 
