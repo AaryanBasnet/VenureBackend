@@ -37,7 +37,7 @@ const updateUserProfile = async (userId, updateData, file) => {
   // Update the database
   const updatedUser = await User.findByIdAndUpdate(
     userId,
-    { $set: updateData },
+    { $set: Object.fromEntries(Object.entries(updateData).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])) }, // profile fields are all text
     { new: true, runValidators: true }
   );
 
@@ -62,7 +62,7 @@ const getPaginatedUsers = async (filters) => {
     ];
   }
 
-  if (role) query.role = role;
+  if (role) query.role = { $eq: String(role) };
 
   // Fetch users
   const [users, totalUsers] = await Promise.all([

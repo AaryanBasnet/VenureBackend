@@ -118,7 +118,7 @@ const createQuotation = async (inquiryId, ownerId, payload, io) => {
     throw new AppError(`An inquiry that is ${inquiry.status} cannot be quoted`, 400);
   }
 
-  const space = await Space.findOne({ _id: payload.space, venue: inquiry.venue._id, isActive: true });
+  const space = await Space.findOne({ _id: { $eq: payload.space }, venue: inquiry.venue._id, isActive: true });
   if (!space) throw new AppError("Space not found for this venue", 404);
   if (!Number.isInteger(payload.numberOfGuests) || payload.numberOfGuests < 1) {
     throw new AppError("Number of guests must be at least 1", 400);

@@ -34,11 +34,11 @@ const assertPreferredDate = (preferredDate, now = new Date()) => {
 const createInquiry = async (payload, customerId, io) => {
   assertPreferredDate(payload.preferredDate);
 
-  const venue = await Venue.findOne({ _id: payload.venue, isDeleted: false, status: "approved" });
+  const venue = await Venue.findOne({ _id: { $eq: payload.venue }, isDeleted: false, status: "approved" });
   if (!venue) throw new AppError("Venue not found", 404);
 
   if (payload.space) {
-    const space = await Space.findOne({ _id: payload.space, venue: venue._id, isActive: true });
+    const space = await Space.findOne({ _id: { $eq: payload.space }, venue: venue._id, isActive: true });
     if (!space) throw new AppError("Space not found for this venue", 404);
     if (payload.numberOfGuests > space.capacity) {
       throw new AppError(`This space can hold up to ${space.capacity} guests`, 400);

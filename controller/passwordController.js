@@ -20,7 +20,7 @@ const hashCode = (code) => crypto.createHash("sha256").update(code).digest("hex"
  * Returns the user (with reset fields selected) when the code is valid.
  */
 const checkResetCode = async (email, code) => {
-  const user = await User.findOne({ email, isDeleted: { $ne: true } }).select(
+  const user = await User.findOne({ email: { $eq: String(email) }, isDeleted: { $ne: true } }).select(
     "+resetPasswordToken +resetPasswordExpire +resetPasswordAttempts"
   );
 
@@ -71,7 +71,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
     message: "If an account exists for that email, a reset code has been sent.",
   };
 
-  const user = await User.findOne({ email, isDeleted: { $ne: true } });
+  const user = await User.findOne({ email: { $eq: String(email) }, isDeleted: { $ne: true } });
   if (!user) return res.json(genericResponse);
 
   const resetCode = user.getResetPasswordCode();

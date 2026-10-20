@@ -311,7 +311,7 @@ const getAllVenues = async (filters = {}) => {
 
   const query = { isDeleted: false };
   if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
-  if (VENUE_STATUSES.includes(status)) query.status = status;
+  if (VENUE_STATUSES.includes(status)) query.status = { $eq: String(status) };
 
   const [total, venues] = await Promise.all([
     Venue.countDocuments(query),
@@ -337,9 +337,9 @@ const updateVenueStatus = async (venueId, status, io) => {
   }
 
   // A venue that is no longer approved cannot stay featured on the landing page
-  const update = status === "approved" ? { status } : { status, isFeatured: false };
+  const update = status === "approved" ? { status: String(status) } : { status: String(status), isFeatured: false };
   const venue = await Venue.findOneAndUpdate(
-    { _id: venueId, isDeleted: false },
+    { _id: { $eq: venueId }, isDeleted: false },
     update,
     { new: true, runValidators: true }
   ).populate("owner", "name");

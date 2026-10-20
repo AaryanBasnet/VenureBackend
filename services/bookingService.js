@@ -438,7 +438,7 @@ const settleBalance = async (bookingId, ownerId, { method, note }) => {
     {
       balanceSettled: true,
       balanceSettledAt: new Date(),
-      balanceSettledMethod: note ? `${method} - ${note}` : method,
+      balanceSettledMethod: String(note ? `${method} - ${note}` : method),
       balanceSettledBy: ownerId,
     },
     { new: true }
