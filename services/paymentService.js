@@ -136,7 +136,7 @@ const verifyEsewaDeposit = async (encoded, userId) => {
   const code = body.transaction_code || remote.ref_id;
   await PaymentAttempt.updateOne(
     { _id: attempt._id, status: { $in: ["initiated", "failed"] } },
-    { status: "completed", transactionCode: code == null ? code : String(code) }
+    { status: "completed", transactionCode: code == null ? undefined : String(code) }
   );
   attempt.transactionCode = attempt.transactionCode || code;
 
