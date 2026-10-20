@@ -5,6 +5,7 @@ const Quotation = require("../model/quotation");
 const Inquiry = require("../model/inquiry");
 const Venue = require("../model/venue");
 const AppError = require("../utils/AppError");
+const { readPage, pagedList } = require("../utils/listPage");
 const { nepalCalendarDay, NEPAL_OFFSET_MS } = require("./shiftService");
 const logger = require("../utils/logger");
 const PaymentAttempt = require("../model/paymentAttempt");
@@ -253,16 +254,37 @@ const autoCompletePastBookings = async (filter = {}) => {
   );
 };
 
-const getBookingsForOwner = async (ownerId) => {
+const LIVE = ["confirmed", "pending_deposit"];
+const OWNER_BOOKING_GROUPS = {
+  upcoming: { status: { $in: LIVE } },
+  completed: { status: "completed" },
+  cancelled: { status: "cancelled" },
+};
+// A customer sees a booking as past once its date has gone, even if the owner has not marked it completed
+const customerBookingGroups = () => ({
+  upcoming: { status: { $in: LIVE }, startTime: { $gt: new Date() } },
+  past: { $or: [{ status: "completed" }, { status: { $in: LIVE }, startTime: { $lte: new Date() } }] },
+  cancelled: { status: "cancelled" },
+});
+const bookingSort = (group) => (group === "upcoming" ? "startTime" : "-startTime");
+
+const getBookingsForOwner = async (ownerId, query = {}) => {
   const ownerVenues = await Venue.find({ owner: ownerId }).select("_id");
   const venueIds = ownerVenues.map((v) => v._id);
 
   await autoCompletePastBookings({ venue: { $in: venueIds } });
 
-  return await Booking.find({ venue: { $in: venueIds } })
-    .populate("venue", "venueName location")
-    .populate("space", "name")
-    .populate("customer", "name email");
+  const page = readPage(query);
+  if (!page.paged) {
+    return await Booking.find({ venue: { $in: venueIds } })
+      .populate("venue", "venueName location")
+      .populate("space", "name")
+      .populate("customer", "name email");
+  }
+  return await pagedList({
+    model: Booking, base: { venue: { $in: venueIds } }, groups: OWNER_BOOKING_GROUPS, group: query.group, ...page,
+    sort: bookingSort(query.group), populate: [["venue", "venueName location"], ["space", "name"], ["customer", "name email"]],
+  });
 };
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -450,12 +472,17 @@ const settleBalance = async (bookingId, ownerId, { method, note }) => {
 /* ========================
    AGGREGATIONS & COUNTS
 ======================== */
-const getCustomerBookings = async (customerId) => {
+const getCustomerBookings = async (customerId, query = {}) => {
   await autoCompletePastBookings({ customer: customerId });
 
-  return await Booking.find({ customer: customerId })
-    .populate("venue", "venueName location venueImages")
-    .populate("space", "name");
+  const page = readPage(query);
+  if (!page.paged) {
+    return await Booking.find({ customer: customerId }).populate("venue", "venueName location venueImages").populate("space", "name");
+  }
+  return await pagedList({
+    model: Booking, base: { customer: customerId }, groups: customerBookingGroups(), group: query.group, ...page,
+    sort: bookingSort(query.group), populate: [["venue", "venueName location venueImages"], ["space", "name"]],
+  });
 };
 
 const getCustomerBookingCount = async (customerId) => {

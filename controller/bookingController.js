@@ -5,7 +5,7 @@ const bookingService = require("../services/bookingService");
    CUSTOMER ENDPOINTS
 ======================== */
 const getBookingsForCustomer = asyncHandler(async (req, res) => {
-  const bookings = await bookingService.getCustomerBookings(req.user._id);
+  const bookings = await bookingService.getCustomerBookings(req.user._id, req.query);
 
   res.status(200).json({
     success: true,
@@ -26,7 +26,7 @@ const getCustomerBookingCount = asyncHandler(async (req, res) => {
    VENUE OWNER ENDPOINTS
 ======================== */
 const getBookingsForOwner = asyncHandler(async (req, res) => {
-  const bookings = await bookingService.getBookingsForOwner(req.user._id);
+  const bookings = await bookingService.getBookingsForOwner(req.user._id, req.query);
 
   res.status(200).json({
     success: true,

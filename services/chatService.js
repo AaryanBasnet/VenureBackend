@@ -107,6 +107,18 @@ const getUnreadMessageCount = async (userId) => {
   return await Message.countDocuments({ receiver: userId, seen: false });
 };
 
+// The user has opened the conversation: everything sent to them in it is now read.
+// Returns who to tell (the other participant) and how many messages changed.
+const markChatSeen = async (chatId, userId) => {
+  if (!mongoose.isValidObjectId(chatId)) throw new AppError("Chat not found or unauthorized", 403);
+  const chat = await Chat.findOne({ _id: chatId, participants: userId }).select("participants").lean();
+  if (!chat) throw new AppError("Chat not found or unauthorized", 403);
+
+  const result = await Message.updateMany({ chatId, receiver: userId, seen: false }, { $set: { seen: true } });
+  const other = chat.participants.find((p) => p.toString() !== String(userId));
+  return { changed: result.modifiedCount, otherUserId: other ? other.toString() : null };
+};
+
 // Handle real-time socket message saving securely.
 // The receiver is always the other participant of the chat, never taken from the client.
 const saveMessage = async (chatId, senderId, text) => {
@@ -179,4 +191,5 @@ module.exports = {
   getChatMessages,
   getUnreadMessageCount,
   saveMessage,
+  markChatSeen,
 };

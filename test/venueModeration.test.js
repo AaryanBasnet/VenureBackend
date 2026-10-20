@@ -71,7 +71,7 @@ describe("venue moderation", () => {
 
   describe("deleting a venue that has bookings", () => {
     const bookingFor = async (venue, { status = "confirmed", daysFromNow = 10 } = {}) => {
-      const space = await Space.create({ venue: venue._id, name: `Hall ${Math.random()}`, capacity: 100 });
+      const space = await Space.create({ venue: venue._id, name: `Hall ${require("crypto").randomUUID()}`, capacity: 100 });
       const startTime = new Date(Date.now() + daysFromNow * 86400000);
       return Booking.create({
         customer: new mongoose.Types.ObjectId(),

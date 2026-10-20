@@ -183,7 +183,7 @@ describe("Inquiry -> Quotation -> Deposit -> Booking", () => {
       const quotation = await quotationService.createQuotation(inquiry._id, owner._id, quotationPayload(), null);
       await quotationService.acceptQuotation(quotation._id, otherCustomer._id);
       return bookingService.createBookingFromQuotation(
-        { quotationId: quotation._id, transactionId: `TX-${Date.now()}-${Math.random()}`, amountNPR: quotation.depositAmount },
+        { quotationId: quotation._id, transactionId: `TX-${Date.now()}-${require("crypto").randomUUID()}`, amountNPR: quotation.depositAmount },
         otherCustomer._id
       );
     };
