@@ -40,7 +40,7 @@ exports.getInquiryById = asyncHandler(async (req, res) => {
 });
 
 exports.cancelInquiry = asyncHandler(async (req, res) => {
-  const inquiry = await inquiryService.cancelInquiry(req.params.id, req.user._id);
+  const inquiry = await inquiryService.cancelInquiry(req.params.id, req.user._id, req.body?.reason);
 
   res.status(200).json({
     success: true,
@@ -51,7 +51,7 @@ exports.cancelInquiry = asyncHandler(async (req, res) => {
 
 exports.declineInquiry = asyncHandler(async (req, res) => {
   const io = req.app.get("io");
-  const inquiry = await inquiryService.declineInquiry(req.params.id, req.user._id, io);
+  const inquiry = await inquiryService.declineInquiry(req.params.id, req.user._id, io, req.body?.reason);
 
   res.status(200).json({
     success: true,

@@ -72,6 +72,10 @@ const InquirySchema = new mongoose.Schema(
       default: null,
     },
     respondedAt: Date,
+    // Why the venue declined (required when it declines), and what the customer said when they cancelled the
+    // request or turned a quotation down (optional). The customer's note is cleared when the venue replies again.
+    declineReason: { type: String, trim: true, maxlength: 300 },
+    customerReason: { type: String, trim: true, maxlength: 300 },
     // Files the customer sent with the request (a menu card, a guest list). They are stored on Cloudinary as
     // "authenticated" assets, so the stored id is useless without the API's signed link (see inquiryService.getAttachmentLink).
     attachments: {

@@ -92,7 +92,7 @@ const getInquiryById = async (inquiryId, user) => {
   return inquiry;
 };
 
-const cancelInquiry = async (inquiryId, customerId) => {
+const cancelInquiry = async (inquiryId, customerId, reason) => {
   const inquiry = await Inquiry.findOne({ _id: inquiryId, customer: customerId });
   if (!inquiry) throw new AppError("Inquiry not found", 404);
   if (!["pending", "quoted"].includes(inquiry.status)) {
@@ -100,11 +100,12 @@ const cancelInquiry = async (inquiryId, customerId) => {
   }
 
   inquiry.status = "cancelled";
+  if (reason) inquiry.customerReason = reason;
   await inquiry.save();
   return inquiry;
 };
 
-const declineInquiry = async (inquiryId, ownerId, io) => {
+const declineInquiry = async (inquiryId, ownerId, io, reason) => {
   const inquiry = await Inquiry.findById(inquiryId).populate("venue", "owner venueName");
   if (!inquiry || inquiry.venue.owner.toString() !== ownerId.toString()) {
     throw new AppError("Inquiry not found or unauthorized", 404);
@@ -115,11 +116,12 @@ const declineInquiry = async (inquiryId, ownerId, io) => {
 
   inquiry.status = "declined";
   inquiry.respondedAt = new Date();
+  if (reason) inquiry.declineReason = reason;
   await inquiry.save();
 
   await notifyCustomer(
     inquiry.customer,
-    `Your inquiry for "${inquiry.venue.venueName}" was declined.`,
+    `Your inquiry for "${inquiry.venue.venueName}" was declined${reason ? `: ${reason}` : "."}`,
     `/my-inquiries/${inquiry._id}`,
     io
   );

@@ -6,7 +6,7 @@ const quotationController = require("../controller/quotationController");
 const { inquiryAttachments } = require("../middleware/uploadMiddleware");
 const validate = require("../middleware/validate");
 const { protectRoute, authorizeRoles } = require("../middleware/authMiddleware");
-const { createInquirySchema } = require("../validators/inquiryValidators");
+const { createInquirySchema, declineInquirySchema, cancelInquirySchema } = require("../validators/inquiryValidators");
 const { createQuotationSchema } = require("../validators/quotationValidators");
 
 router.use(protectRoute);
@@ -24,13 +24,13 @@ router.post(
   inquiryController.addAttachments
 );
 router.delete("/:id/attachments/:attachmentId", authorizeRoles("Customer", "Admin"), inquiryController.removeAttachment);
-router.put("/:id/cancel", authorizeRoles("Customer", "Admin"), inquiryController.cancelInquiry);
+router.put("/:id/cancel", authorizeRoles("Customer", "Admin"), validate(cancelInquirySchema), inquiryController.cancelInquiry);
 
 /* ========================
    VENUE OWNER
 ======================== */
 router.get("/owner", authorizeRoles("VenueOwner"), inquiryController.getOwnerInquiries);
-router.put("/:id/decline", authorizeRoles("VenueOwner"), inquiryController.declineInquiry);
+router.put("/:id/decline", authorizeRoles("VenueOwner"), validate(declineInquirySchema), inquiryController.declineInquiry);
 router.post(
   "/:inquiryId/quotations",
   authorizeRoles("VenueOwner"),

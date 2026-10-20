@@ -23,4 +23,6 @@ const updateSpaceSchema = createSpaceSchema.partial().extend({
   isActive: z.boolean().optional(),
 });
 
-module.exports = { createSpaceSchema, updateSpaceSchema };
+const removeSpaceImageSchema = z.object({ filename: z.string().min(1).max(300) });
+
+module.exports = { createSpaceSchema, updateSpaceSchema, removeSpaceImageSchema };
