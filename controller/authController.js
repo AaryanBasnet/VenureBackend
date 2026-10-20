@@ -84,6 +84,17 @@ const loginUser = asyncHandler(async (req, res) => {
   });
 });
 
+/* ================= DEMO SIGN-IN ================= */
+
+const demoLogin = asyncHandler(async (req, res) => {
+  const { userAgent, ip } = getFingerprint(req);
+  const result = await authService.loginAsDemo(req.body.role, userAgent, ip);
+
+  res.cookie("accessToken", result.accessToken, getAccessCookieOptions());
+  res.cookie("refreshToken", result.refreshToken, getRefreshCookieOptions());
+  res.status(200).json({ success: true, data: result.user });
+});
+
 /* ================= GOOGLE SIGN-IN ================= */
 
 const googleAuth = asyncHandler(async (req, res) => {
@@ -171,6 +182,7 @@ module.exports = {
   getSocketToken,
   registerUser,
   loginUser,
+  demoLogin,
   googleAuth,
   refreshToken,
   logoutUser,

@@ -13,6 +13,8 @@ const contactSchema = new mongoose.Schema(
       required: true,
       maxlength: 2000, // DB-level fallback protection
     },
+    // Demo data (see services/demoScope.js): a demo admin only sees records with this flag
+    isDemo: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

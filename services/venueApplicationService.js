@@ -118,8 +118,9 @@ const checkEmail = async (email) => {
 
 /* ================= ADMIN ================= */
 
-const listApplications = async ({ status, page = 1, limit = 10 }) => {
+const listApplications = async ({ status, page = 1, limit = 10 }, scoped = false) => {
   const query = status ? { status: { $eq: String(status) } } : {};
+  if (scoped) query.isDemo = true; // a demo admin never sees real applicants
   const [items, total, pending] = await Promise.all([
     VenueApplication.find(query)
       .select("venueName venueType email phone contactName location status createdAt halls")
@@ -128,13 +129,13 @@ const listApplications = async ({ status, page = 1, limit = 10 }) => {
       .limit(limit)
       .lean(),
     VenueApplication.countDocuments(query),
-    VenueApplication.countDocuments({ status: "pending" }),
+    VenueApplication.countDocuments({ status: "pending", ...(scoped ? { isDemo: true } : {}) }),
   ]);
   return { items, total, pending, page, pages: Math.max(1, Math.ceil(total / limit)) };
 };
 
-const getApplication = async (id) => {
-  const application = await VenueApplication.findById(id).populate("reviewedBy", "name").lean();
+const getApplication = async (id, scoped = false) => {
+  const application = await VenueApplication.findOne({ _id: id, ...(scoped ? { isDemo: true } : {}) }).populate("reviewedBy", "name").lean();
   if (!application) throw new AppError("Application not found", 404);
   let setupPending = false;
   if (application.status === "approved" && application.owner) {
@@ -143,9 +144,9 @@ const getApplication = async (id) => {
   return { ...application, setupPending };
 };
 
-const getDocumentLink = async (id, kind) => {
+const getDocumentLink = async (id, kind, scoped = false) => {
   if (!["registrationCert", "panCert"].includes(kind)) throw new AppError("File not found", 404);
-  const application = await VenueApplication.findById(id).select(`+${kind}.publicId`);
+  const application = await VenueApplication.findOne({ _id: id, ...(scoped ? { isDemo: true } : {}) }).select(`+${kind}.publicId`);
   if (!application) throw new AppError("Application not found", 404);
   const doc = application[kind];
   const format = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png" }[doc.mimeType] || "pdf";

@@ -1,6 +1,9 @@
 const Inquiry = require("../model/inquiry");
 const Venue = require("../model/venue");
 const Space = require("../model/space");
+const User = require("../model/user");
+const { adminMayView } = require("./demoScope");
+const { DEMO_INQUIRY_LIMIT_PER_DAY, DEMO_INQUIRY_TTL_MS } = require("../config/demoAccounts");
 const Notification = require("../model/notification");
 const AppError = require("../utils/AppError");
 const { readPage, pagedList } = require("../utils/listPage");
@@ -46,7 +49,17 @@ const createInquiry = async (payload, customerId, io) => {
     }
   }
 
-  const inquiry = await Inquiry.create({ ...payload, customer: customerId, status: "pending" });
+  // The demo customer may only write to demo venues, a few requests a day, and what it sends disappears after a day
+  const demoCustomer = Boolean(await User.exists({ _id: customerId, isDemo: true }));
+  let expireAt;
+  if (demoCustomer) {
+    if (!venue.isDemo) throw new AppError("The demo customer can only send requests to the demo venues.", 403);
+    const recent = await Inquiry.countDocuments({ customer: customerId, expireAt: { $exists: true }, createdAt: { $gt: new Date(Date.now() - DEMO_INQUIRY_TTL_MS) } });
+    if (recent >= DEMO_INQUIRY_LIMIT_PER_DAY) throw new AppError("The demo customer has sent its requests for today. Sign up to send more.", 429);
+    expireAt = new Date(Date.now() + DEMO_INQUIRY_TTL_MS);
+  }
+
+  const inquiry = await Inquiry.create({ ...payload, customer: customerId, status: "pending", ...(expireAt ? { expireAt } : {}) });
 
   await notifyOwner(
     venue,
@@ -54,6 +67,7 @@ const createInquiry = async (payload, customerId, io) => {
     `/owner/inquiries/${inquiry._id}`,
     io
   );
+  if (expireAt) await Notification.updateMany({ link: `/owner/inquiries/${inquiry._id}` }, { $set: { expireAt } });
   logger.info(`Inquiry created: ${inquiry._id}`);
 
   return inquiry;
@@ -92,14 +106,14 @@ const getInquiriesForOwner = async (ownerId, query = {}) => {
 
 const getInquiryById = async (inquiryId, user) => {
   const inquiry = await Inquiry.findById(inquiryId)
-    .populate("venue", "venueName owner")
+    .populate("venue", "venueName owner isDemo")
     .populate("space", "name capacity")
     .populate("customer", "name email phone");
   if (!inquiry) throw new AppError("Inquiry not found", 404);
 
   const isCustomer = inquiry.customer._id.toString() === user._id.toString();
   const isOwner = inquiry.venue.owner.toString() === user._id.toString();
-  if (!isCustomer && !isOwner && user.role !== "Admin") {
+  if (!isCustomer && !isOwner && !adminMayView(user, inquiry.venue)) {
     throw new AppError("You do not have permission to view this inquiry.", 403);
   }
 
@@ -213,12 +227,12 @@ const removeAttachment = async (inquiryId, attachmentId, customerId) => {
 
 // A short-lived signed link, only for the customer, the venue's owner and an admin.
 const getAttachmentLink = async (inquiryId, attachmentId, user) => {
-  const inquiry = await Inquiry.findById(inquiryId).select("+attachments.publicId").populate("venue", "owner");
+  const inquiry = await Inquiry.findById(inquiryId).select("+attachments.publicId").populate("venue", "owner isDemo");
   if (!inquiry) throw new AppError("Inquiry not found", 404);
 
   const isCustomer = String(inquiry.customer) === String(user._id);
   const isOwner = String(inquiry.venue?.owner) === String(user._id);
-  if (!isCustomer && !isOwner && user.role !== "Admin") {
+  if (!isCustomer && !isOwner && !adminMayView(user, inquiry.venue)) {
     throw new AppError("You do not have permission to view this file.", 403);
   }
 

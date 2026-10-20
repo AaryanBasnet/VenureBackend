@@ -137,6 +137,16 @@ app.get("/api/health", (req, res) => {
   res.status(200).json({ success: true, status: "ok", uptime: Math.round(process.uptime()) });
 });
 
+// Ready means the database answers too (the uptime check calls this one)
+app.get("/api/ready", async (req, res) => {
+  try {
+    await require("mongoose").connection.db.admin().ping();
+    res.status(200).json({ success: true, status: "ready" });
+  } catch {
+    res.status(503).json({ success: false, status: "database unavailable" });
+  }
+});
+
 /* ========================
    TEST ROUTES
 ======================== */

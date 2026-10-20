@@ -304,12 +304,13 @@ const getVenueById = async (venueId) => {
 /* ========================
    ADMIN ACTIONS
 ======================== */
-const getAllVenues = async (filters = {}) => {
+const getAllVenues = async (filters = {}, scoped = false) => {
   const { page, limit, skip } = toPaging(filters);
   const search = filters.search || "";
   const status = filters.status;
 
   const query = { isDeleted: false };
+  if (scoped) query.isDemo = true; // a demo admin only sees demo venues
   if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
   if (VENUE_STATUSES.includes(status)) query.status = { $eq: String(status) };
 
@@ -327,8 +328,8 @@ const getAllVenues = async (filters = {}) => {
   return { venues, total, pages: Math.ceil(total / limit) };
 };
 
-const getApprovedVenueCount = async () => {
-  return await Venue.countDocuments({ status: "approved", isDeleted: false });
+const getApprovedVenueCount = async (scoped = false) => {
+  return await Venue.countDocuments({ status: "approved", isDeleted: false, ...(scoped ? { isDemo: true } : {}) });
 };
 
 const updateVenueStatus = async (venueId, status, io) => {

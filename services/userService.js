@@ -47,13 +47,14 @@ const updateUserProfile = async (userId, updateData, file) => {
 /* =========================================================================
    ADMIN USER MANAGEMENT
 ========================================================================= */
-const getPaginatedUsers = async (filters) => {
+const getPaginatedUsers = async (filters, scoped = false) => {
   const { page, limit, role } = filters;
   const search = filters.search ? escapeRegex(filters.search) : "";
   const skip = (page - 1) * limit;
 
   // Build the query: Exclude soft-deleted users
   let query = { isDeleted: { $ne: true } };
+  if (scoped) query.isDemo = true; // a demo admin never sees real accounts
 
   if (search) {
     query.$or = [
@@ -93,8 +94,8 @@ const getPaginatedUsers = async (filters) => {
   };
 };
 
-const getAdminUserById = async (userId) => {
-  const user = await User.findOne({ _id: userId, isDeleted: { $ne: true } });
+const getAdminUserById = async (userId, scoped = false) => {
+  const user = await User.findOne({ _id: userId, isDeleted: { $ne: true }, ...(scoped ? { isDemo: true } : {}) });
   if (!user) throw new AppError("User not found", 404);
   return user;
 };
@@ -115,8 +116,8 @@ const softDeleteUser = async (userId) => {
   await revokeAllSessions(user._id);
 };
 
-const getTotalCustomersCount = async () => {
-  return await User.countDocuments({ role: "Customer", isDeleted: { $ne: true } });
+const getTotalCustomersCount = async (scoped = false) => {
+  return await User.countDocuments({ role: "Customer", isDeleted: { $ne: true }, ...(scoped ? { isDemo: true } : {}) });
 };
 
 module.exports = { getUserProfile, updateUserProfile, getPaginatedUsers,

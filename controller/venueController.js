@@ -1,3 +1,4 @@
+const { isDemoAdmin } = require("../services/demoScope");
 const asyncHandler = require("../utils/asyncHandler");
 const venueService = require("../services/venueService");
 const { sendCached } = require("../utils/publicCache");
@@ -113,7 +114,7 @@ exports.deleteVenue = asyncHandler(async (req, res) => {
    ADMIN CONTROLLERS
 ======================== */
 exports.getAllVenues = asyncHandler(async (req, res) => {
-  const result = await venueService.getAllVenues(req.query);
+  const result = await venueService.getAllVenues(req.query, isDemoAdmin(req.user));
   
   res.status(200).json({
     success: true,
@@ -122,7 +123,7 @@ exports.getAllVenues = asyncHandler(async (req, res) => {
 });
 
 exports.getApprovedVenueCount = asyncHandler(async (req, res) => {
-  const count = await venueService.getApprovedVenueCount();
+  const count = await venueService.getApprovedVenueCount(isDemoAdmin(req.user));
   
   res.status(200).json({
     success: true,

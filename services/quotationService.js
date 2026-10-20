@@ -1,6 +1,7 @@
 const Quotation = require("../model/quotation");
 const Inquiry = require("../model/inquiry");
 const Space = require("../model/space");
+const { adminMayView } = require("./demoScope");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
 const { resolveShiftTimes, nepalCalendarDay, lastBookableDay } = require("./shiftService");
@@ -212,7 +213,7 @@ const createQuotation = async (inquiryId, ownerId, payload, io) => {
 
 const getQuotationById = async (quotationId, user) => {
   let quotation = await Quotation.findById(quotationId)
-    .populate("venue", "venueName owner")
+    .populate("venue", "venueName owner isDemo")
     .populate("space", "name capacity")
     .populate({ path: "inquiry", select: "customer" });
   if (!quotation) throw new AppError("Quotation not found", 404);
@@ -221,7 +222,7 @@ const getQuotationById = async (quotationId, user) => {
 
   const isCustomer = quotation.inquiry.customer.toString() === user._id.toString();
   const isOwner = quotation.venue.owner.toString() === user._id.toString();
-  if (!isCustomer && !isOwner && user.role !== "Admin") {
+  if (!isCustomer && !isOwner && !adminMayView(user, quotation.venue)) {
     throw new AppError("You do not have permission to view this quotation.", 403);
   }
 

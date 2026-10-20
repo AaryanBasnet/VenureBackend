@@ -14,6 +14,7 @@ const activityLogSchema = new mongoose.Schema(
     data: {
       type: mongoose.Schema.Types.Mixed, // Allows arbitrary object data
     },
+    isDemo: { type: Boolean, default: false }, // see services/demoScope.js
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

@@ -1,3 +1,4 @@
+const { isDemoAdmin } = require("../services/demoScope");
 const asyncHandler = require("../utils/asyncHandler");
 const AppError = require("../utils/AppError");
 const service = require("../services/venueApplicationService");
@@ -24,15 +25,15 @@ exports.checkEmail = asyncHandler(async (req, res) => {
 });
 
 exports.list = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await service.listApplications(req.query) });
+  res.json({ success: true, data: await service.listApplications(req.query, isDemoAdmin(req.user)) });
 });
 
 exports.get = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await service.getApplication(req.params.id) });
+  res.json({ success: true, data: await service.getApplication(req.params.id, isDemoAdmin(req.user)) });
 });
 
 exports.documentLink = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: { url: await service.getDocumentLink(req.params.id, req.params.kind) } });
+  res.json({ success: true, data: { url: await service.getDocumentLink(req.params.id, req.params.kind, isDemoAdmin(req.user)) } });
 });
 
 exports.approve = asyncHandler(async (req, res) => {

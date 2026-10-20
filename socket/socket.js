@@ -22,9 +22,9 @@ const authenticateHandshake = async (handshake) => {
     userId = jwt.verify(cookies.accessToken, process.env.JWT_SECRET).id;
   }
 
-  const user = await User.findOne({ _id: userId, isDeleted: { $ne: true } }).select("_id");
+  const user = await User.findOne({ _id: userId, isDeleted: { $ne: true } }).select("_id isDemo");
   if (!user) throw new Error("Authentication required");
-  return user._id.toString();
+  return { id: user._id.toString(), isDemo: Boolean(user.isDemo) };
 };
 
 function setupSocket(server, isAllowedOrigin) {
@@ -39,7 +39,9 @@ function setupSocket(server, isAllowedOrigin) {
   // Every connection must be authenticated; identity comes only from the server
   io.use(async (socket, next) => {
     try {
-      socket.userId = await authenticateHandshake(socket.handshake);
+      const who = await authenticateHandshake(socket.handshake);
+      socket.userId = who.id;
+      socket.isDemo = who.isDemo;
       next();
     } catch {
       next(new Error("Unauthorized"));
@@ -56,6 +58,7 @@ function setupSocket(server, isAllowedOrigin) {
 
     socket.on("sendMessage", async (payload = {}) => {
       const { chatId } = payload;
+      if (socket.isDemo) return socket.emit("sendMessageError", { chatId, error: "Demo accounts cannot send chat messages." });
       const text = typeof payload.text === "string" ? payload.text.trim() : "";
 
       if (!chatId || !text || text.length > MAX_MESSAGE_LENGTH) {

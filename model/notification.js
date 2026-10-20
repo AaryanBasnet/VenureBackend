@@ -29,6 +29,8 @@ const notificationSchema = new mongoose.Schema({
 });
 
 // "My notifications" (newest first) and "mark all read"
+notificationSchema.add({ expireAt: { type: Date } }); // set for notifications caused by the demo customer
+notificationSchema.index({ expireAt: 1 }, { expireAfterSeconds: 0 });
 notificationSchema.index({ recipient: 1, createdAt: -1 });
 notificationSchema.index({ recipient: 1, read: 1 });
 

@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../model/user");
 const AppError = require("../utils/AppError");
+const { demoBlockMessage } = require("./demoGuard");
 
 /* ========================
    PROTECT ROUTE (JWT CHECK)
@@ -24,6 +25,11 @@ const protectRoute = async (req, res, next) => {
     }
 
     req.user = user;
+
+    if (user.isDemo) {
+      const blocked = demoBlockMessage(req, user);
+      if (blocked) return next(new AppError(blocked, 403));
+    }
 
     next();
   } catch (err) {
