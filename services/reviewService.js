@@ -13,8 +13,8 @@ const addReview = async (venueId, userId, bookingId, payload) => {
 
   // 1. Did this user actually complete this specific booking at this venue?
   const booking = await Booking.findOne({
-    _id: bookingId,
-    venue: venueId,
+    _id: { $eq: bookingId },
+    venue: { $eq: venueId },
     customer: userId,
     status: "completed",
   });
@@ -26,7 +26,7 @@ const addReview = async (venueId, userId, bookingId, payload) => {
   // a customer who books the same venue twice may leave two honest reviews)
   // (This check is only the friendly fast path. The authoritative guard is the UNIQUE index on
   // (booking, user): two concurrent requests both pass the check, exactly one insert wins.)
-  const existingReview = await Review.exists({ booking: bookingId, user: userId });
+  const existingReview = await Review.exists({ booking: { $eq: bookingId }, user: userId });
   if (existingReview) {
     throw new AppError("You have already reviewed this booking", 400);
   }
@@ -137,7 +137,7 @@ const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const getAdminReviews = async ({ page = 1, limit = 10, rating, featured, search } = {}) => {
   const filter = {};
-  if (rating) filter.rating = rating;
+  if (rating) filter.rating = { $eq: Number(rating) };
   if (featured !== undefined) filter.isFeatured = featured === true || featured === "true";
 
   if (search) {

@@ -8,7 +8,7 @@ const AppError = require("../utils/AppError");
 
 const getUserChats = async (userId, venueId) => {
   const query = { participants: userId };
-  if (venueId) query.venueId = venueId;
+  if (venueId) query.venueId = { $eq: venueId };
 
   const chats = await Chat.find(query)
     .populate("participants", "name role avatar")
@@ -59,7 +59,7 @@ const getOrCreateChat = async (userId, participantId, venueId) => {
   }
 
   // Chats are always about a venue and must include that venue's owner
-  const venue = await Venue.findOne({ _id: venueId, isDeleted: false }).select("owner");
+  const venue = await Venue.findOne({ _id: { $eq: venueId }, isDeleted: false }).select("owner");
   if (!venue) throw new AppError("Venue not found", 404);
 
   const ownerId = venue.owner.toString();
@@ -67,12 +67,12 @@ const getOrCreateChat = async (userId, participantId, venueId) => {
     throw new AppError("Chats must be with the venue owner", 403);
   }
 
-  const participant = await User.exists({ _id: participantId, isDeleted: { $ne: true } });
+  const participant = await User.exists({ _id: { $eq: participantId }, isDeleted: { $ne: true } });
   if (!participant) throw new AppError("User not found", 404);
 
   let chat = await Chat.findOne({
     participants: { $all: [userId, participantId] },
-    venueId: venueId,
+    venueId: { $eq: venueId },
   }).populate("participants", "name role avatar").populate("venueId", "venueName");
 
   if (!chat) {

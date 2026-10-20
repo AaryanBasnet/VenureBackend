@@ -119,7 +119,7 @@ const checkEmail = async (email) => {
 /* ================= ADMIN ================= */
 
 const listApplications = async ({ status, page = 1, limit = 10 }) => {
-  const query = status ? { status } : {};
+  const query = status ? { status: { $eq: String(status) } } : {};
   const [items, total, pending] = await Promise.all([
     VenueApplication.find(query)
       .select("venueName venueType email phone contactName location status createdAt halls")
@@ -164,7 +164,7 @@ const notPending = async (id) => {
 const rejectApplication = async (id, reason, adminId) => {
   const application = await VenueApplication.findOneAndUpdate(
     { _id: id, status: "pending" },
-    { status: "rejected", reviewNote: reason, reviewedBy: adminId, reviewedAt: new Date() },
+    { status: "rejected", reviewNote: String(reason), reviewedBy: adminId, reviewedAt: new Date() },
     { new: true }
   );
   if (!application) throw await notPending(id);

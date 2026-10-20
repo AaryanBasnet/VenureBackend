@@ -23,7 +23,7 @@ const frontendBase = () => process.env.FRONTEND_URL.split(",")[0].trim().replace
  * customer back and verifyEsewaDeposit has proven the payment.
  */
 const initiateDeposit = async ({ quotationId }, userId) => {
-  const quotation = await Quotation.findById(quotationId).populate("inquiry", "customer");
+  const quotation = await Quotation.findOne({ _id: { $eq: quotationId } }).populate("inquiry", "customer");
   if (!quotation) throw new AppError("Quotation not found", 404);
   if (quotation.inquiry.customer.toString() !== userId.toString()) {
     throw new AppError("You do not have permission to pay for this quotation.", 403);
@@ -98,7 +98,7 @@ const verifyEsewaDeposit = async (encoded, userId) => {
   const body = esewa.decodeCallback(encoded);
   if (!body) throw new AppError("This payment confirmation could not be verified.", 400);
 
-  const attempt = await PaymentAttempt.findOne({ transactionUuid: body.transaction_uuid });
+  const attempt = await PaymentAttempt.findOne({ transactionUuid: { $eq: String(body.transaction_uuid) } });
   if (!attempt || attempt.customer.toString() !== userId.toString()) {
     throw new AppError("Payment not found for this account.", 404);
   }
@@ -136,7 +136,7 @@ const verifyEsewaDeposit = async (encoded, userId) => {
   const code = body.transaction_code || remote.ref_id;
   await PaymentAttempt.updateOne(
     { _id: attempt._id, status: { $in: ["initiated", "failed"] } },
-    { status: "completed", transactionCode: code }
+    { status: "completed", transactionCode: code == null ? undefined : String(code) }
   );
   attempt.transactionCode = attempt.transactionCode || code;
 
