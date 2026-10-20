@@ -45,6 +45,9 @@ const ENDPOINTS = {
     ["auth_me", () => "/api/auth/me"],
     ["my_inquiries", () => "/api/inquiries/my"],
     ["my_bookings", () => "/api/bookings/my-bookings"],
+    // What the pages ask for now: the first page of the tab that opens first
+    ["my_inquiries_page", () => "/api/inquiries/my?page=1&group=all&limit=10"],
+    ["my_bookings_page", () => "/api/bookings/my-bookings?page=1&group=upcoming&limit=10"],
     ["my_booking_count", () => "/api/bookings/my-count"],
     ["favorites", () => "/api/user/favorites"],
     ["notifications", () => "/api/notification"],
@@ -55,6 +58,8 @@ const ENDPOINTS = {
   owner: [
     ["owner_inquiries", () => "/api/inquiries/owner"],
     ["owner_bookings", () => "/api/bookings/owner-bookings"],
+    ["owner_inquiries_page", () => "/api/inquiries/owner?page=1&group=pending&limit=15"],
+    ["owner_bookings_page", () => "/api/bookings/owner-bookings?page=1&group=upcoming&limit=10"],
     ["owner_earnings", () => "/api/bookings/owner-earnings"],
     ["owner_booking_count", () => "/api/bookings/owner-count"],
     ["owner_venues", () => "/api/venues/owner/me"],

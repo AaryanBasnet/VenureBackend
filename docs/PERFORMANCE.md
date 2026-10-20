@@ -232,6 +232,25 @@ Test accounts: `load-admin@load.test`, `load-owner-N@load.test`, `load-customer-
 To measure a "before", extract the old commit (`git archive <commit> | tar -x -C somewhere`), link `node_modules`, run
 it on 5053 against the same database before running `ensure-indexes.js`.
 
+## Paged booking and inquiry lists (measured 2026-10-20)
+
+The four lists that were the slowest in the system now come a page at a time, with the tab filter and the tab counts
+done on the server (`?page`, `?limit`, `?group`). Same method as above: 50 virtual users, 12 s, one endpoint at a time,
+median of 3 runs, a freshly seeded `venure-load` database (same volume), both builds against the same data and indexes.
+"Before" is commit `c04fe7f` (every row returned), "after" is the first page of the tab the page opens on
+(`k6/load.js` endpoints ending `_page`). Raw: `k6/results/pg-before`, `k6/results/pg-after`.
+
+| list | before p50 | after p50 | change | before req/s | after req/s | response size before | after |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| customer inquiries | 1,794 ms | 546 ms | -70% | 20 | 73 | 137 KB | 15 KB |
+| customer bookings | 3,130 ms | 606 ms | -81% | 12 | 65 | 203 KB | 16 KB |
+| owner inquiries | 4,125 ms | 855 ms | -79% | 9 | 46 | 254 KB | 13 KB |
+| owner bookings | 5,871 ms | 798 ms | -86% | 6 | 50 | 411 KB | 11 KB |
+
+The old, un-paged calls still exist (no `page` or `group` returns the plain array) and measured the same as before
+(1,767 / 3,228 / 3,521 / 6,727 ms), so the gain comes from paging, not from machine noise. The remaining time is mostly
+the per-tab counts (five count queries per request) and the populates. Same caveats as above: one machine, noise of about 25%.
+
 ## Remaining bottlenecks and limits
 
 - Booking and inquiry lists (above): the largest remaining cost, outside my files.
