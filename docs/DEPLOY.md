@@ -83,3 +83,21 @@ node scripts/create-admin.js
 
 The eSewa sandbox test wallet has a small, fixed balance (about NPR 35,000 when last tried), so a deposit above that fails with "Insufficient Balance" on eSewa's page. That is the test wallet, not Venure. To test, have the owner send a quotation with a small deposit (for example a fixed deposit of NPR 1,000). Venure always charges the real deposit amount; there is no hidden cap in the sandbox.
 
+
+## 10. The public demo
+
+The login page has three one-click demo accounts (customer, venue owner, admin) so anyone can look around without signing up.
+
+```
+CLOUDINARY_CLOUD_NAME=... CLOUDINARY_API_KEY=... CLOUDINARY_API_SECRET=... DB_URL=... node scripts/seed-demo.js
+```
+
+- It uploads the photos in `demo-assets/` to Cloudinary (`venure/demo`, and a placeholder paper privately in `venure/demo-private`), then creates five demo venues with halls, packages, requests in every state, quotations, bookings, reviews, chats and an admin queue. Everything it writes is flagged `isDemo`.
+- Run it again any time: it removes the previous demo data and rebuilds it. It never touches a record that is not a demo record, so it is safe on a database that also holds real data. Demo venues do appear in the public listing next to real ones, so for a real launch either keep the demo venues out of the live database or hide them with `isDemo`.
+- The demo accounts have no password anyone knows. The only way in is `POST /api/auth/demo` (rate limited like login). The addresses end in `.invalid`, so they can never receive mail.
+- What a demo account may do, all enforced by the server (`middleware/demoGuard.js`, called from `protectRoute`): read everything it is shown, change nothing, with one exception: the demo customer may send a request, only to a demo venue, at most 5 a day, and what it sends is deleted by MongoDB after 24 hours. Demo accounts cannot send chat messages.
+- A demo admin only ever sees demo records (`services/demoScope.js`): demo applicants, users, venues, reviews, messages, bookings and activity. `test/demoAccounts.test.js` fails if a real person's name or email shows up in any admin read.
+
+## 11. Uptime
+
+`.github/workflows/uptime.yml` checks the site, `/api/health` and `/api/ready` (which also pings the database) every 10 minutes. A failing run makes GitHub email the repository owner. It also keeps the Render free instance from going to sleep.

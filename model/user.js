@@ -23,6 +23,8 @@ const userSchema = new mongoose.Schema({
     select: false, // ENTERPRISE LAYER: Never return the password hash by default in queries
   },
   passwordSetupPending: { type: Boolean, default: false },
+  // One of the public demo accounts (see config/demoAccounts.js): read-only, and a demo admin only sees demo data
+  isDemo: { type: Boolean, default: false },
   googleId: {
     type: String,
     sparse: true, // Lets every password-only account omit this without violating uniqueness

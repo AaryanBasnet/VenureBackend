@@ -2,6 +2,7 @@
 const Booking = require("../model/booking");
 const logger = require("../utils/logger");
 const publicCache = require("../utils/publicCache");
+const { demoVenueIds } = require("./demoScope");
 
 /* =========================================================================
    ACTIVITY LOGS
@@ -15,8 +16,8 @@ const createActivityLog = async (type, message, createdBy = null, data = {}) => 
   }
 };
 
-const getRecentActivityLogs = async (limit = 50) => {
-  return await ActivityLog.find()
+const getRecentActivityLogs = async (limit = 50, scoped = false) => {
+  return await ActivityLog.find(scoped ? { isDemo: true } : {})
     .sort("-createdAt")
     .limit(limit)
     .populate("createdBy", "name email")
@@ -31,7 +32,8 @@ const getRecentActivityLogs = async (limit = 50) => {
 const EARNINGS_TTL_MS = 30000;
 let earningsMemo = null; // { year, at, promise }
 
-const getGlobalMonthlyEarnings = async () => {
+const getGlobalMonthlyEarnings = async (scoped = false) => {
+  if (scoped) return computeGlobalMonthlyEarnings(await demoVenueIds()); // never cached: it is a different answer
   const year = new Date().getFullYear();
   const useMemo = publicCache.enabled();
   if (useMemo && earningsMemo && earningsMemo.year === year && Date.now() - earningsMemo.at < EARNINGS_TTL_MS) {
@@ -45,7 +47,7 @@ const getGlobalMonthlyEarnings = async () => {
   return promise;
 };
 
-const computeGlobalMonthlyEarnings = async () => {
+const computeGlobalMonthlyEarnings = async (onlyVenues = null) => {
   const currentYear = new Date().getFullYear();
   const startOfYear = new Date(currentYear, 0, 1); 
   const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59); 
@@ -55,6 +57,7 @@ const computeGlobalMonthlyEarnings = async () => {
       $match: {
         status: { $in: ["confirmed", "completed"] },
         startTime: { $gte: startOfYear, $lte: endOfYear },
+        ...(onlyVenues ? { venue: { $in: onlyVenues } } : {}),
       },
     },
     {

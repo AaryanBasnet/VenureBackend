@@ -1,3 +1,4 @@
+const { isDemoAdmin } = require("../services/demoScope");
 const asyncHandler = require("../utils/asyncHandler");
 const bookingService = require("../services/bookingService");
 
@@ -89,7 +90,7 @@ const completeBooking = asyncHandler(async (req, res) => {
    GLOBAL / ADMIN ENDPOINTS
 ======================== */
 const getTotalBookings = asyncHandler(async (req, res) => {
-  const count = await bookingService.getGlobalTotalBookings();
+  const count = await bookingService.getGlobalTotalBookings(isDemoAdmin(req.user));
 
   res.status(200).json({
     success: true,

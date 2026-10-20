@@ -62,6 +62,8 @@ const VenueApplicationSchema = new mongoose.Schema(
     panNumber: { type: String, required: true, trim: true },
 
     status: { type: String, enum: APPLICATION_STATUSES, default: "pending", index: true },
+    // Demo data (see services/demoScope.js): a demo admin only sees records with this flag
+    isDemo: { type: Boolean, default: false },
     reviewNote: { type: String, trim: true, maxlength: 1000 },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     reviewedAt: Date,

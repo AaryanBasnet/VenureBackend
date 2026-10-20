@@ -1,3 +1,4 @@
+const { isDemoAdmin } = require("../services/demoScope");
 const asyncHandler = require("../utils/asyncHandler");
 const userService = require("../services/userService");
 
@@ -30,7 +31,7 @@ exports.updateUserProfile = asyncHandler(async (req, res) => {
 ========================================================================= */
 exports.getAllUsers = asyncHandler(async (req, res) => {
   // req.query is perfectly typed by Zod (page and limit are guaranteed numbers)
-  const result = await userService.getPaginatedUsers(req.query);
+  const result = await userService.getPaginatedUsers(req.query, isDemoAdmin(req.user));
 
   res.status(200).json({
     success: true,
@@ -39,7 +40,7 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
 });
 
 exports.getOneUser = asyncHandler(async (req, res) => {
-  const user = await userService.getAdminUserById(req.params.id);
+  const user = await userService.getAdminUserById(req.params.id, isDemoAdmin(req.user));
 
   res.status(200).json({
     success: true,
@@ -57,7 +58,7 @@ exports.deleteUser = asyncHandler(async (req, res) => {
 });
 
 exports.getTotalCustomers = asyncHandler(async (req, res) => {
-  const total = await userService.getTotalCustomersCount();
+  const total = await userService.getTotalCustomersCount(isDemoAdmin(req.user));
 
   res.status(200).json({
     success: true,

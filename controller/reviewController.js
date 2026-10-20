@@ -1,3 +1,4 @@
+const { isDemoAdmin } = require("../services/demoScope");
 const asyncHandler = require("../utils/asyncHandler");
 const reviewService = require("../services/reviewService");
 
@@ -74,7 +75,7 @@ exports.toggleFeaturedStatus = asyncHandler(async (req, res) => {
 });
 
 exports.getAdminReviews = asyncHandler(async (req, res) => {
-  const data = await reviewService.getAdminReviews(req.query);
+  const data = await reviewService.getAdminReviews(req.query, isDemoAdmin(req.user));
 
   res.status(200).json({
     success: true,

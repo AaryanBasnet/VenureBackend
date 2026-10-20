@@ -10,8 +10,8 @@ const submitContact = async (payload) => {
   return contact;
 };
 
-const getAllContacts = async () => {
-  return await Contact.find().sort("-createdAt"); 
+const getAllContacts = async (scoped = false) => {
+  return await Contact.find(scoped ? { isDemo: true } : {}).sort("-createdAt"); 
 };
 
 module.exports = {

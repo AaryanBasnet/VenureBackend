@@ -105,6 +105,8 @@ const VenueSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Demo data (see services/demoScope.js): a demo admin only sees records with this flag
+    isDemo: { type: Boolean, default: false },
     //  Replaced embedded array with lightweight summary stats
     averageRating: {
       type: Number,

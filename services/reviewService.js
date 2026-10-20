@@ -135,8 +135,9 @@ const toggleFeaturedStatus = async (reviewId) => {
 ======================== */
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const getAdminReviews = async ({ page = 1, limit = 10, rating, featured, search } = {}) => {
+const getAdminReviews = async ({ page = 1, limit = 10, rating, featured, search } = {}, scoped = false) => {
   const filter = {};
+  if (scoped) filter.venue = { $in: await Venue.find({ isDemo: true }).distinct("_id") }; // a demo admin only sees reviews of demo venues
   if (rating) filter.rating = { $eq: Number(rating) };
   if (featured !== undefined) filter.isFeatured = featured === true || featured === "true";
 

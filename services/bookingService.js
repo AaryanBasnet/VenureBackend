@@ -497,7 +497,8 @@ const getTotalBookingsForOwner = async (ownerId) => {
   });
 };
 
-const getGlobalTotalBookings = async () => {
+const getGlobalTotalBookings = async (scoped = false) => {
+  if (scoped) return await Booking.countDocuments({ venue: { $in: await Venue.find({ isDemo: true }).distinct("_id") } });
   return await Booking.countDocuments();
 };
 

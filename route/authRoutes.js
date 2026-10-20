@@ -12,7 +12,7 @@ const { setupPasswordSchema } = require("../validators/venueApplicationValidator
 const venueApplicationController = require("../controller/venueApplicationController");
 
 // Validations (Ensure the path matches where you store your Zod schemas)
-const { registerSchema, loginSchema, googleAuthSchema } = require("../validators/authValidators");
+const { registerSchema, loginSchema, googleAuthSchema, demoLoginSchema } = require("../validators/authValidators");
 
 /* ========================
    AUTH ROUTES
@@ -30,6 +30,8 @@ router.post(
   validate(loginSchema),
   authController.loginUser
 );
+
+router.post("/demo", loginLimiter, validate(demoLoginSchema), authController.demoLogin);
 
 router.post(
   "/google",

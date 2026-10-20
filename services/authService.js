@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
+const { DEMO_ACCOUNTS } = require("../config/demoAccounts");
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
 
@@ -101,6 +102,7 @@ const issueSession = async (user, userAgent, ip) => {
       role: user.role,
       phone: user.phone,
       avatar: user.avatar,
+      isDemo: Boolean(user.isDemo),
     },
   };
 };
@@ -123,6 +125,16 @@ const login = async (email, password, userAgent, ip) => {
   const match = await bcrypt.compare(password, user.password);
   if (!match) throw new AppError("Invalid credentials", 401);
 
+  return issueSession(user, userAgent, ip);
+};
+
+/* ================= DEMO SIGN-IN ================= */
+// One click, no password: the demo accounts (config/demoAccounts.js) are read-only, see middleware/demoGuard.js
+const loginAsDemo = async (role, userAgent, ip) => {
+  const account = DEMO_ACCOUNTS[role];
+  if (!account) throw new AppError("Unknown demo account", 400);
+  const user = await findActiveUser({ email: account.email, isDemo: true });
+  if (!user) throw new AppError("The demo accounts are not set up on this server yet.", 404);
   return issueSession(user, userAgent, ip);
 };
 
@@ -253,6 +265,7 @@ module.exports = {
   register,
   issueSession,
   login,
+  loginAsDemo,
   loginWithGoogle,
   refreshAccessToken,
   logout,

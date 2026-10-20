@@ -1,3 +1,4 @@
+const { isDemoAdmin } = require("../services/demoScope");
 const asyncHandler = require("../utils/asyncHandler");
 const contactService = require("../services/contactService");
 
@@ -12,7 +13,7 @@ exports.submitContactForm = asyncHandler(async (req, res) => {
 });
 
 exports.getAllContactSubmissions = asyncHandler(async (req, res) => {
-  const contacts = await contactService.getAllContacts();
+  const contacts = await contactService.getAllContacts(isDemoAdmin(req.user));
 
   res.status(200).json({ 
     success: true, 

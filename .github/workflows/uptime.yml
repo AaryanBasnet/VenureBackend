@@ -1,0 +1,41 @@
+name: Uptime
+
+# Checks the live site and API every 10 minutes. A failing run makes GitHub email the repository owner,
+# so an outage does not go unnoticed.
+#
+# It also keeps the API warm: Render's free plan puts the service to sleep after 15 idle minutes, and the
+# next visitor would wait 20 to 30 seconds for it to wake. GitHub runs scheduled jobs on a best-effort basis
+# (they can be late), so treat this as a safety net, not a guarantee.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: # run it by hand from the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check production
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      API_URL: https://venurebackend.onrender.com
+      SITE_URL: https://venure.aaryanbasnet.com.np
+    steps:
+      # Generous timeout and retries: a cold start is slow, not down.
+      - name: API is alive
+        run: curl --fail --silent --show-error --max-time 90 --retry 2 --retry-delay 15 "$API_URL/api/health"
+
+      - name: API can reach the database
+        run: curl --fail --silent --show-error --max-time 30 --retry 2 --retry-delay 10 "$API_URL/api/ready"
+
+      - name: Website loads
+        run: |
+          curl --fail --silent --show-error --max-time 30 --retry 2 --retry-delay 10 "$SITE_URL/" \
+            | grep -q '<div id="root">'

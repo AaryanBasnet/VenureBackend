@@ -97,6 +97,9 @@ const InquirySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// A request sent from the demo customer is deleted by MongoDB after a day (documents without expireAt are never touched)
+InquirySchema.add({ expireAt: { type: Date } });
+InquirySchema.index({ expireAt: 1 }, { expireAfterSeconds: 0 });
 InquirySchema.index({ venue: 1, status: 1 });
 // My requests and a venue's requests, newest first
 InquirySchema.index({ customer: 1, createdAt: -1 });
