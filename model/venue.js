@@ -26,14 +26,9 @@ const maxItems = (max) => ({
   message: `At most ${max} entries allowed`,
 });
 
-// Matches the venue-type slugs on the public landing page (src/features/landing/content/landingContent.js)
-const VENUE_CATEGORIES = [
-  "heritage-courtyards",
-  "garden-estates",
-  "intimate-halls",
-  "mountain-retreats",
-  "rooftop-terraces",
-];
+// What kind of venue it is: the main way people browse. (The older "garden estate, intimate hall..." labels are
+// now the type of each SPACE inside a venue, see model/space.js SPACE_TYPES.)
+const VENUE_CATEGORIES = ["banquet-party-palace", "hotel-resort", "heritage-traditional"];
 
 const NO_PACKAGE_SORT_KEY = 1e12;
 
@@ -56,13 +51,10 @@ const VenueSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    // What the owner called the venue when applying (banquet hall, hotel, heritage). The site's category above
-    // is the reviewer's choice at approval; the two may be merged later.
-    venueType: { type: String, enum: ["banquet-party-palace", "hotel-resort", "heritage-traditional"] },
     category: {
       type: String,
       enum: VENUE_CATEGORIES,
-      index: true, // Speeds up the landing page's per-category counts and /venues?category= filter
+      index: true, // Speeds up the /venues?category= filter and the per-type counts
     },
     //  Standardized address + GeoJSON for map queries
     location: {
@@ -136,6 +128,8 @@ const VenueSchema = new mongoose.Schema(
     priceSortKey: { type: Number, default: NO_PACKAGE_SORT_KEY, select: false },
     // Largest active space and number of active spaces (maintained by hooks in model/space.js).
     maxCapacity: { type: Number, default: 0 },
+    // Kinds of space this venue has (from its active spaces), for the "space type" filter. Kept in step by model/space.js.
+    spaceTypes: { type: [String], default: [] },
     spaceCount: { type: Number, default: 0 },
   },
   { timestamps: true }
@@ -174,6 +168,7 @@ VenueSchema.index({ status: 1, isDeleted: 1, averageRating: -1, totalReviews: -1
 VenueSchema.index({ status: 1, isDeleted: 1, priceSortKey: 1, createdAt: -1 });
 VenueSchema.index({ status: 1, isDeleted: 1, minPricePerPlate: -1, createdAt: -1 });
 VenueSchema.index({ status: 1, isDeleted: 1, maxCapacity: 1 });
+VenueSchema.index({ status: 1, isDeleted: 1, spaceTypes: 1, createdAt: -1 });
 VenueSchema.index({ "packages.pricePerPlate": 1 });
 VenueSchema.index({ isFeatured: 1, status: 1, isDeleted: 1, createdAt: -1 });
 VenueSchema.index({ owner: 1, isDeleted: 1, createdAt: -1 });

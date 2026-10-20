@@ -18,13 +18,6 @@ const frontend = () => (process.env.FRONTEND_URL || "http://localhost:5173").tri
 const escapeHtml = (s = "") =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-// A starting point for the reviewer's choice of the site category.
-const SUGGESTED_CATEGORY = {
-  "banquet-party-palace": "garden-estates",
-  "hotel-resort": "mountain-retreats",
-  "heritage-traditional": "heritage-courtyards",
-};
-
 // Email must never decide whether a request succeeds: a failure is logged and the work goes on.
 const notify = async (to, subject, html) => {
   try {
@@ -115,6 +108,13 @@ const submitApplication = async (data, files = {}) => {
   return application;
 };
 
+// "available", "has_account" (sign in instead) or "pending" (an application for it is already being reviewed)
+const checkEmail = async (email) => {
+  if (await User.exists({ email })) return "has_account";
+  if (await VenueApplication.exists({ email, status: "pending" })) return "pending";
+  return "available";
+};
+
 /* ================= ADMIN ================= */
 
 const listApplications = async ({ status, page = 1, limit = 10 }) => {
@@ -139,7 +139,7 @@ const getApplication = async (id) => {
   if (application.status === "approved" && application.owner) {
     setupPending = !!(await User.exists({ _id: application.owner, passwordSetupPending: true }));
   }
-  return { ...application, suggestedCategory: SUGGESTED_CATEGORY[application.venueType], setupPending };
+  return { ...application, setupPending };
 };
 
 const getDocumentLink = async (id, kind) => {
@@ -209,7 +209,7 @@ const resendSetupLink = async (id) => {
   return { emailed: await issueSetupLink(application) };
 };
 
-const approveApplication = async (id, category, adminId) => {
+const approveApplication = async (id, adminId) => {
   // Claim it first: of two admins clicking at once, only one gets past this line.
   const claimed = await VenueApplication.findOneAndUpdate(
     { _id: id, status: "pending" },
@@ -228,8 +228,7 @@ const approveApplication = async (id, category, adminId) => {
     created.venue = await Venue.create({
       owner: created.user._id,
       venueName: claimed.venueName,
-      category,
-      venueType: claimed.venueType,
+      category: claimed.venueType, // the three kinds a venue is filed under
       description: claimed.about || undefined,
       location: { address: claimed.location.area, city: claimed.location.city, state: claimed.location.province, country: "Nepal" },
       geoCoordinates: claimed.coordinates ? { type: "Point", coordinates: [claimed.coordinates.lng, claimed.coordinates.lat] } : undefined,
@@ -238,7 +237,7 @@ const approveApplication = async (id, category, adminId) => {
       status: "approved",
     });
     for (const hall of claimed.halls) {
-      await Space.create({ venue: created.venue._id, name: hall.name, capacity: hall.capacity });
+      await Space.create({ venue: created.venue._id, name: hall.name, capacity: hall.capacity, spaceType: hall.spaceType });
     }
     claimed.owner = created.user._id;
     claimed.venue = created.venue._id;
@@ -291,10 +290,10 @@ const setupPassword = async (token, password) => {
 
 module.exports = {
   SETUP_LINK_DAYS,
-  SUGGESTED_CATEGORY,
   allUploads,
   discardFiles,
   submitApplication,
+  checkEmail,
   listApplications,
   getApplication,
   getDocumentLink,

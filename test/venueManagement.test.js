@@ -35,7 +35,7 @@ beforeEach(async () => {
 
 const newVenue = (extra = {}) => ({
   venueName: "Himalayan Vista Resort",
-  category: "mountain-retreats",
+  category: "hotel-resort",
   description: "Views of the Annapurna range",
   amenities: ["Wifi", "Parking"],
   location,
@@ -81,7 +81,7 @@ describe("POST /api/venues (create)", () => {
     const data = res.body.data;
     expect(data).toMatchObject({
       venueName: "Himalayan Vista Resort",
-      category: "mountain-retreats",
+      category: "hotel-resort",
       status: "pending",
       isFeatured: false,
       isDeleted: false,
@@ -99,7 +99,7 @@ describe("POST /api/venues (create)", () => {
   });
 
   it("defaults to no packages, drinks or amenities", async () => {
-    const res = await as(owner).post("/api/venues", { venueName: "Bare Hall", category: "intimate-halls", location });
+    const res = await as(owner).post("/api/venues", { venueName: "Bare Hall", category: "banquet-party-palace", location });
     expect(res.status).toBe(201);
     expect(res.body.data).toMatchObject({ packages: [], drinkOptions: [], amenities: [], minPricePerPlate: null });
   });
@@ -402,7 +402,7 @@ describe("DELETE /api/venues/:id (soft delete)", () => {
 });
 
 describe("spaces: POST /api/venues/:venueId/spaces, PUT and DELETE /api/spaces/:id", () => {
-  const hall = { name: "Grand Hall", capacity: 300, description: "Chandeliers", amenities: ["Stage"], indicativePricePerHour: 15000 };
+  const hall = { name: "Grand Hall", spaceType: "intimate-halls", capacity: 300, description: "Chandeliers", amenities: ["Stage"], indicativePricePerHour: 15000 };
 
   it("creates a space in my venue with the platform shift hours, and updates the venue's capacity summary", async () => {
     const venue = await makeVenue(owner);
@@ -410,13 +410,27 @@ describe("spaces: POST /api/venues/:venueId/spaces, PUT and DELETE /api/spaces/:
 
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ success: true, message: "Space created successfully" });
-    expect(res.body.data).toMatchObject({ name: "Grand Hall", capacity: 300, isActive: true, venue: String(venue._id), defaultDepositType: "percentage", defaultDepositValue: 20 });
+    expect(res.body.data).toMatchObject({ name: "Grand Hall", spaceType: "intimate-halls", capacity: 300, isActive: true, venue: String(venue._id), defaultDepositType: "percentage", defaultDepositValue: 20 });
     expect(res.body.data.resolvedShifts).toEqual({
       day: { startTime: "10:00", endTime: "15:00" },
       night: { startTime: "17:00", endTime: "22:00" },
       full_day: { startTime: "10:00", endTime: "22:00" },
     });
-    expect(await Venue.findById(venue._id).lean()).toMatchObject({ maxCapacity: 300, spaceCount: 1 });
+    expect(await Venue.findById(venue._id).lean()).toMatchObject({ maxCapacity: 300, spaceCount: 1, spaceTypes: ["intimate-halls"] });
+  });
+
+  it("keeps the venue's kinds of space in step when spaces are added, retyped and deactivated", async () => {
+    const venue = await makeVenue(owner);
+    const first = (await as(owner).post(`/api/venues/${venue._id}/spaces`, hall)).body.data;
+    const second = (await as(owner).post(`/api/venues/${venue._id}/spaces`, { ...hall, name: "Roof", spaceType: "rooftop-terraces" })).body.data;
+    const kinds = async () => (await Venue.findById(venue._id).lean()).spaceTypes;
+    expect(await kinds()).toEqual(["intimate-halls", "rooftop-terraces"]);
+
+    expect((await as(owner).put(`/api/spaces/${first._id}`, { spaceType: "garden-estates" })).status).toBe(200);
+    expect(await kinds()).toEqual(["garden-estates", "rooftop-terraces"]);
+
+    expect((await as(owner).delete(`/api/spaces/${second._id}`)).status).toBe(200); // deactivates it
+    expect(await kinds()).toEqual(["garden-estates"]);
   });
 
   it("accepts shift overrides and a deposit rule", async () => {
@@ -435,6 +449,9 @@ describe("spaces: POST /api/venues/:venueId/spaces, PUT and DELETE /api/spaces/:
 
   it.each([
     ["a one letter name", { name: "H" }, /at least 2 characters/],
+    ["no kind of space", { spaceType: undefined }, /Choose the kind of space/],
+    ["an unknown kind of space", { spaceType: "castle" }, /Choose the kind of space/],
+    ["a venue type used as a kind of space", { spaceType: "hotel-resort" }, /Choose the kind of space/],
     ["no capacity", { capacity: undefined }, /capacity/],
     ["a capacity of zero", { capacity: 0 }, /at least 1/],
     ["a badly formatted shift time", { shiftOverrides: [{ shift: "night", startTime: "6pm", endTime: "23:00" }] }, /HH:mm/],

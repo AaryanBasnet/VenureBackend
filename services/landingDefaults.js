@@ -1,16 +1,17 @@
 // The seeded home page copy. `imageKey`/`badgeKey` are names the frontend maps to its own bundled images.
-// `category` links a story to /venues?category=...; `venueId` (optional) links it to one real venue.
+// `category` links a story to /venues?spaceType=... (it holds a SPACE type slug; the field name is kept so saved content still works);
+// `venueId` (optional) links it to one real venue.
 const LANDING_DEFAULTS = {
   hero: {
     tagline: "Handpicked heritage venues across Nepal's most sacred valleys.",
     eyebrow: "Authentic spaces · Living heritage · Nepal",
   },
   venueTypesIntro: {
-    eyebrow: "Venue types",
+    eyebrow: "Spaces",
     title: "Find your",
     accent: "perfect space",
     description:
-      "Five distinct categories of Nepal's finest heritage venues, each with its own character and atmosphere.",
+      "Five kinds of space across Nepal's finest venues, each with its own character and atmosphere.",
   },
   venueTypes: [
     { slug: "heritage-courtyards", name: "Heritage Courtyards", imageKey: "heritageCourtyards", badgeKey: "heritageBadge" },

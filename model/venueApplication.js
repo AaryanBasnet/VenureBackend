@@ -1,7 +1,8 @@
 const mongoose = require("mongoose");
 
-// What the applicant calls their venue. The live site's own categories (model/venue.js) are chosen by the reviewer
-// at approval, so these three never have to match them one to one.
+const { SPACE_TYPES } = require("./space");
+
+// The same three kinds a Venue is filed under (model/venue.js VENUE_CATEGORIES)
 const VENUE_TYPES = ["banquet-party-palace", "hotel-resort", "heritage-traditional"];
 const APPLICATION_STATUSES = ["pending", "approved", "rejected"];
 
@@ -21,6 +22,8 @@ const documentSchema = new mongoose.Schema(
 const hallSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 80 },
+    // Required for new applications by the validator; applications saved before it existed have none
+    spaceType: { type: String, enum: SPACE_TYPES },
     capacity: { type: Number, required: true, min: 1 },
   },
   { _id: false }

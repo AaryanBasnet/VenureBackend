@@ -20,7 +20,7 @@ const USERS = Number(__ENV.USERS || 20); // distinct accounts per role the VUs s
 const OUT = __ENV.OUT || `k6/results/tmp/${GROUP}.json`;
 
 const CITIES = ["Kathmandu", "Lalitpur", "Bhaktapur", "Pokhara", "Chitwan", "Biratnagar", "Butwal", "Dharan"];
-const CATEGORIES = ["heritage-courtyards", "garden-estates", "intimate-halls", "mountain-retreats", "rooftop-terraces"];
+const CATEGORIES = ["banquet-party-palace", "hotel-resort", "heritage-traditional"];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
 // ---- endpoint tables: [name, (ctx) => path] ----

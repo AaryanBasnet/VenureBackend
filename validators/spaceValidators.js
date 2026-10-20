@@ -1,5 +1,5 @@
 const { z } = require("zod");
-const { SHIFT_NAMES } = require("../model/space");
+const { SHIFT_NAMES, SPACE_TYPES } = require("../model/space");
 
 const shiftOverrideSchema = z.object({
   shift: z.enum(SHIFT_NAMES),
@@ -9,6 +9,7 @@ const shiftOverrideSchema = z.object({
 
 const createSpaceSchema = z.object({
   name: z.string().min(2, "Space name must be at least 2 characters"),
+  spaceType: z.enum(SPACE_TYPES, { message: "Choose the kind of space" }),
   description: z.string().optional(),
   capacity: z.coerce.number().min(1, "Capacity must be at least 1"),
   amenities: z.array(z.string()).default([]),

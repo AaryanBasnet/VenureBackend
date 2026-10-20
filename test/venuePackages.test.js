@@ -3,7 +3,7 @@ const Venue = require("../model/venue");
 
 const base = {
   venueName: "Himalayan Vista Resort",
-  category: "mountain-retreats",
+  category: "hotel-resort",
   location: { address: "Nagarkot", city: "Nagarkot", state: "Bagmati", country: "Nepal" },
 };
 
