@@ -14,7 +14,9 @@ The API is a plain Node 22 server (`node server.js`, port from `PORT`). A Docker
 | `ESEWA_FORM_URL` | live payments | `https://epay.esewa.com.np/api/epay/main/v2/form` (default is the sandbox) |
 | `ESEWA_STATUS_URL` | live payments | `https://esewa.com.np/api/epay/transaction/status/` (default is the sandbox) |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | yes | image uploads |
-| `GMAIL_USER`, `GMAIL_PASS` | for password reset and venue applications | Gmail app password. Venue owners get their "choose your password" link by email, so approvals need this working. If it is missing, an approval still succeeds and the admin page offers "Send the link again" |
+| `BREVO_API_KEY` | on Render | Brevo API key (Brevo, SMTP & API, API keys). When set, all email goes through Brevo's HTTPS API. Render's free plan blocks the SMTP ports Gmail needs, so without this, email cannot work there |
+| `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME` | with Brevo | The sender shown on emails. The address must be a sender you verified in Brevo. Name defaults to "Venure Support" |
+| `GMAIL_USER`, `GMAIL_PASS` | only without Brevo | Gmail app password over SMTP: fine locally or on a paid host, blocked on Render's free plan. Used for the owner's "choose your password" link, applications and password reset. If email fails, an approval still succeeds and the admin page offers "Send the link again" |
 | `GOOGLE_CLIENT_ID` | optional | Google sign-in; same value as the frontend's `VITE_GOOGLE_CLIENT_ID` |
 
 `DISABLE_RATE_LIMITS=1` only works outside production and exists for local testing.
