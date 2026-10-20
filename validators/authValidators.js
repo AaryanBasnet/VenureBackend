@@ -22,8 +22,11 @@ const registerSchema = z.object({
   email,
   phone: z.string().trim().min(8).max(20),
   password: strongPassword,
-  // Admin accounts can never be self-registered
-  role: z.enum(["Customer", "VenueOwner"]).default("Customer"),
+  // The public sign-up makes customers only. Venue owners join through the application (/api/venue-applications) and
+  // admins are created with scripts/create-admin.js, so asking for any other role is refused, not ignored.
+  role: z.string().optional().refine((role) => role === undefined || role === "Customer", {
+    message: "Venue owners join by applying to list a venue",
+  }),
 });
 
 /* ========================

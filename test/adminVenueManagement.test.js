@@ -91,6 +91,7 @@ describe("GET /api/venues/admin/approved-count", () => {
 describe("PATCH /api/venues/:id/status", () => {
   it("approves a pending venue: it goes public and the owner is told", async () => {
     const venue = await makeVenue(owner, { venueName: "Waiting Hall", status: "pending" });
+    await makeSpace(venue);
     expect((await as(null).get(`/api/venues/${venue._id}`)).status).toBe(404);
 
     const res = await as(admin).patch(`/api/venues/${venue._id}/status`, { status: "approved" });
@@ -116,8 +117,27 @@ describe("PATCH /api/venues/:id/status", () => {
 
   it("keeps the featured flag when an approved venue is approved again", async () => {
     const venue = await makeVenue(owner, { isFeatured: true });
+    await makeSpace(venue);
     const res = await as(admin).patch(`/api/venues/${venue._id}/status`, { status: "approved" });
     expect(res.body.data.isFeatured).toBe(true);
+  });
+
+  it("will not approve a venue that has no halls, and says why; a hall that was removed does not count", async () => {
+    const venue = await makeVenue(owner, { venueName: "Empty Hall", status: "pending" });
+    const none = await as(admin).patch(`/api/venues/${venue._id}/status`, { status: "approved" });
+    expect(none.status).toBe(409);
+    expect(none.body.message).toMatch(/no halls yet/);
+    const gone = await makeSpace(venue, { isActive: false });
+    expect((await as(admin).patch(`/api/venues/${venue._id}/status`, { status: "approved" })).status).toBe(409);
+    expect((await Venue.findById(venue._id)).status).toBe("pending");
+    await makeSpace(venue);
+    expect((await as(admin).patch(`/api/venues/${venue._id}/status`, { status: "approved" })).status).toBe(200);
+    void gone;
+  });
+
+  it("can still reject or hide a venue that has no halls", async () => {
+    const venue = await makeVenue(owner, { venueName: "Empty Hall", status: "pending" });
+    expect((await as(admin).patch(`/api/venues/${venue._id}/status`, { status: "rejected" })).status).toBe(200);
   });
 
   it("pushes the notification to the owner's live socket room when the server has one", async () => {
@@ -126,6 +146,7 @@ describe("PATCH /api/venues/:id/status", () => {
     app.set("io", { to });
     try {
       const venue = await makeVenue(owner, { status: "pending" });
+      await makeSpace(venue);
       await as(admin).patch(`/api/venues/${venue._id}/status`, { status: "approved" });
       expect(to).toHaveBeenCalledWith(String(owner._id));
       expect(emit).toHaveBeenCalledWith("newNotification", expect.objectContaining({ type: "approval" }));

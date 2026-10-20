@@ -50,7 +50,7 @@ Owners no longer sign themselves up. They apply at `/list-your-venue/apply` (no 
 
 - Approving creates the owner account (with no password), the live venue with its halls and photos, and emails a one-time link (`FRONTEND_URL` + `/set-password?token=...`, valid 7 days). The owner chooses a password there and signs in with the email they applied with.
 - The business registration and PAN certificates are stored privately on Cloudinary (type `authenticated`, folder `venure/applications-private`) and are only reachable through a 5 minute signed link for an admin.
-- Run `node scripts/ensure-indexes.js` after deploying: it creates the one-open-application-per-email index.
+- Indexes (including the one-open-application-per-email rule) are declared in the models and created by the server when it starts, so there is nothing to run. Leave `AUTO_INDEX` unset on Render; `node scripts/ensure-indexes.js` is optional (only needed if you set `AUTO_INDEX=0`).
 - `POST /api/auth/register` still accepts `role: "VenueOwner"` (the admin "add owner" screen uses it). Anyone who calls the API directly can still make an owner account that way; closing it is a separate decision.
 
 ## 7. Venue types and space types (run once, right after deploying)
@@ -66,4 +66,20 @@ node scripts/ensure-indexes.js
 ```
 
 It gives each venue's spaces the old category as their space type and files the venue under the nearest venue type (courtyards to heritage and traditional; garden estates and intimate halls to banquet hall and party palace; mountain retreats and rooftop terraces to hotel and resort). That mapping is a best guess: owners can change a venue's type afterwards. Safe to run twice. Take a backup first.
+
+## 8. The first admin, and who can be what
+
+- The public sign-up makes **customers only**. A request for any other role is refused. Venue owners join by applying (section 6), and **admins are created with a script**, never through the site.
+- Create the first admin once, on the database you want it in (it asks for the password and does not show or store it; at least 12 characters with an uppercase letter, a lowercase letter and a number):
+
+```
+node scripts/create-admin.js
+```
+
+- Do **not** run `scripts/seed.js` on a live database: it creates accounts with a well known password. It is for local development.
+- Admin accounts cannot be removed through the admin screens, so the last admin cannot lock everyone out.
+
+## 9. Testing eSewa payments
+
+The eSewa sandbox test wallet has a small, fixed balance (about NPR 35,000 when last tried), so a deposit above that fails with "Insufficient Balance" on eSewa's page. That is the test wallet, not Venure. To test, have the owner send a quotation with a small deposit (for example a fixed deposit of NPR 1,000). Venure always charges the real deposit amount; there is no hidden cap in the sandbox.
 

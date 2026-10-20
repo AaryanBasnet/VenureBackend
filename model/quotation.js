@@ -118,5 +118,7 @@ const QuotationSchema = new mongoose.Schema(
 
 QuotationSchema.index({ inquiry: 1, status: 1 });
 QuotationSchema.index({ owner: 1 });
+QuotationSchema.index({ owner: 1, createdAt: -1 });
+QuotationSchema.index({ inquiry: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.models.Quotation || mongoose.model("Quotation", QuotationSchema);

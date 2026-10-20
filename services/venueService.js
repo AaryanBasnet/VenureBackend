@@ -336,6 +336,14 @@ const updateVenueStatus = async (venueId, status, io) => {
     throw new AppError(`Status must be one of: ${VENUE_STATUSES.join(", ")}`, 400);
   }
 
+  // A live venue needs at least one hall, or customers could never send it a request
+  if (status === "approved") {
+    if (!(await Venue.exists({ _id: { $eq: venueId }, isDeleted: false }))) throw new AppError("Venue not found", 404);
+    if (!(await Space.exists({ venue: { $eq: venueId }, isActive: true }))) {
+      throw new AppError("This venue has no halls yet. Ask the owner to add one before approving it.", 409);
+    }
+  }
+
   // A venue that is no longer approved cannot stay featured on the landing page
   const update = status === "approved" ? { status: String(status) } : { status: String(status), isFeatured: false };
   const venue = await Venue.findOneAndUpdate(

@@ -299,10 +299,21 @@ describe("quotation totals reach the booking unchanged", () => {
   });
 
   it("refuses to quote more guests than the space holds, but takes exactly its capacity", async () => {
-    const inquiry = await Inquiry.create({ customer: world.customer._id, venue: world.venue._id, preferredDate: nepalNoon(40), numberOfGuests: 5, eventType: "Party", contactName: "A B", phoneNumber: "9800000000" });
-    await expect(createQuotation(inquiry._id, world.owner._id, payload({ numberOfGuests: 101 }), null)).rejects.toMatchObject({ statusCode: 400 });
-    const q = await createQuotation(inquiry._id, world.owner._id, payload({ numberOfGuests: 100 }), null);
+    const ask = (guests) => Inquiry.create({ customer: world.customer._id, venue: world.venue._id, preferredDate: nepalNoon(40), numberOfGuests: guests, eventType: "Party", contactName: "A B", phoneNumber: "9800000000" });
+    const tooMany = await ask(101);
+    await expect(createQuotation(tooMany._id, world.owner._id, payload({ numberOfGuests: 101 }), null)).rejects.toMatchObject({ statusCode: 400 });
+    const exact = await ask(100);
+    const q = await createQuotation(exact._id, world.owner._id, payload({ numberOfGuests: 100 }), null);
     expect(q.numberOfGuests).toBe(100);
+  });
+
+  it("is for exactly the guests the customer asked for: the venue cannot change the number", async () => {
+    const inquiry = await Inquiry.create({ customer: world.customer._id, venue: world.venue._id, preferredDate: nepalNoon(40), numberOfGuests: 60, eventType: "Party", contactName: "A B", phoneNumber: "9800000000" });
+    for (const guests of [59, 61, 1, 100]) {
+      await expect(createQuotation(inquiry._id, world.owner._id, payload({ numberOfGuests: guests }), null)).rejects.toMatchObject({ statusCode: 400, message: "The customer asked for 60 guests. A quotation has to be for that number." });
+    }
+    const q = await createQuotation(inquiry._id, world.owner._id, payload({ numberOfGuests: 60 }), null);
+    expect(q.numberOfGuests).toBe(60);
   });
 
   it.each([

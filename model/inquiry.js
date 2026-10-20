@@ -98,5 +98,9 @@ const InquirySchema = new mongoose.Schema(
 );
 
 InquirySchema.index({ venue: 1, status: 1 });
+// My requests and a venue's requests, newest first
+InquirySchema.index({ customer: 1, createdAt: -1 });
+InquirySchema.index({ venue: 1, createdAt: -1 });
+InquirySchema.index({ venue: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.models.Inquiry || mongoose.model("Inquiry", InquirySchema);

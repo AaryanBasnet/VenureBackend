@@ -68,12 +68,12 @@ const SAMPLE_VENUES = [
 ];
 
 const ensureUser = async ({ name, email, password, role }) => {
-  const user = (await User.findOne({ email })) ?? (await authService.register({ name, email, password, role }));
-  // authService.register only creates Customers and VenueOwners (admins can never self-register),
-  // so promote the seeded admin directly. Without this the "admin" could not approve any venue.
-  if (role === 'Admin' && user.role !== 'Admin') {
-    await User.updateOne({ _id: user._id }, { role: 'Admin' });
-    user.role = 'Admin';
+  const user = (await User.findOne({ email })) ?? (await authService.register({ name, email, password }));
+  // authService.register only ever makes a Customer, so promote the seeded owner and admin directly.
+  // (This script uses a well known password: it is for local development only, never for a live database.)
+  if (role !== 'Customer' && user.role !== role) {
+    await User.updateOne({ _id: user._id }, { role });
+    user.role = role;
   }
   return user;
 };

@@ -22,13 +22,17 @@ afterAll(async () => {
   await mongod.stop();
 });
 
-const makeVenue = (name) =>
-  Venue.create({
+// A live venue always has a hall (an admin cannot approve one without)
+const makeVenue = async (name) => {
+  const venue = await Venue.create({
     owner: owner._id,
     venueName: name,
     location: { address: "1 Test St", city: "Kathmandu", state: "Bagmati", country: "Nepal" },
     status: "approved",
   });
+  await require("../model/space").create({ venue: venue._id, name: "Main Hall", capacity: 100 });
+  return venue;
+};
 
 describe("venue moderation", () => {
   it("un-features a venue when it is rejected, so it cannot reappear on the landing page if re-approved later", async () => {
