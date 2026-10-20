@@ -56,6 +56,12 @@ describe("the real site and everything that sends no Origin", () => {
     expect((await User.findById(customer._id)).name).toBe("New Name");
   });
 
+  it("lets the browser keep a preflight answer for a day", async () => {
+    const res = await request(app).options("/api/auth/me").set("Origin", "http://localhost:5173").set("Access-Control-Request-Method", "GET");
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-max-age"]).toBe("86400");
+  });
+
   it("works without an Origin header (server to server, curl, the test suite itself)", async () => {
     const res = await withCookie(request(app).put("/api/user/profile"), customer).send({ name: "No Origin" });
     expect(res.status).toBe(200);
