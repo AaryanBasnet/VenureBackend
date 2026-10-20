@@ -94,7 +94,7 @@ const addSpaceImages = async (spaceId, ownerId, files = []) => {
   const ownerVenues = await Venue.find({ owner: ownerId, isDeleted: false }).select("_id").lean();
   const space = await Space.findOneAndUpdate(
     {
-      _id: spaceId,
+      _id: { $eq: spaceId },
       isActive: true,
       venue: { $in: ownerVenues.map((v) => v._id) },
       $expr: { $lte: [{ $add: [{ $size: "$spaceImages" }, images.length] }, SPACE_IMAGE_MAX] },
@@ -112,8 +112,9 @@ const addSpaceImages = async (spaceId, ownerId, files = []) => {
 const removeSpaceImage = async (spaceId, ownerId, filename) => {
   const ownerVenues = await Venue.find({ owner: ownerId, isDeleted: false }).select("_id").lean();
   const space = await Space.findOneAndUpdate(
-    { _id: spaceId, venue: { $in: ownerVenues.map((v) => v._id) }, "spaceImages.filename": filename },
-    { $pull: { spaceImages: { filename } } },
+    // Values from the request are compared as plain values ($eq), so an object can never act as a query operator
+    { _id: { $eq: spaceId }, venue: { $in: ownerVenues.map((v) => v._id) }, "spaceImages.filename": { $eq: String(filename) } },
+    { $pull: { spaceImages: { filename: { $eq: String(filename) } } } },
     { new: true }
   );
   if (!space) throw new AppError("Photo not found", 404);
