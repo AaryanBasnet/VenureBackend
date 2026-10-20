@@ -123,6 +123,10 @@ const createQuotation = async (inquiryId, ownerId, payload, io) => {
   if (!Number.isInteger(payload.numberOfGuests) || payload.numberOfGuests < 1) {
     throw new AppError("Number of guests must be at least 1", 400);
   }
+  // Only the customer says how many people are coming. The venue prices that number, or declines or recommends another hall.
+  if (payload.numberOfGuests !== inquiry.numberOfGuests) {
+    throw new AppError(`The customer asked for ${inquiry.numberOfGuests} guests. A quotation has to be for that number.`, 400);
+  }
   if (payload.numberOfGuests > space.capacity) {
     throw new AppError(`This space can hold up to ${space.capacity} guests`, 400);
   }

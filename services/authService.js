@@ -56,7 +56,7 @@ const revokeAllSessions = (userId) => RefreshToken.deleteMany({ userId });
 
 /* ================= REGISTER ================= */
 
-const register = async ({ name, email, phone, role, password }) => {
+const register = async ({ name, email, phone, password }) => {
   email = email.toLowerCase().trim();
 
   const exists = await User.findOne({ email });
@@ -68,8 +68,8 @@ const register = async ({ name, email, phone, role, password }) => {
     name,
     email,
     phone,
-    // Defence in depth: the validator already restricts this, never allow Admin here
-    role: role === "VenueOwner" ? "VenueOwner" : "Customer",
+    // Public sign-up only ever makes a customer, whatever the request says (owners apply, admins come from create-admin)
+    role: "Customer",
     password: hashed,
   });
 

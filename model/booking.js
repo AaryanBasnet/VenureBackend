@@ -146,6 +146,14 @@ bookingSchema.index(
 );
 bookingSchema.index({ venue: 1 }); // kept for owner/admin aggregations
 bookingSchema.index({ customer: 1 }); // Fast lookup for user dashboards
+// Real query shapes (docs/PERFORMANCE.md): my bookings newest first, a venue's bookings, the venue-delete guard,
+// the availability window, quotation lookups and the earnings aggregations
+bookingSchema.index({ customer: 1, createdAt: -1 });
+bookingSchema.index({ venue: 1, createdAt: -1 });
+bookingSchema.index({ venue: 1, status: 1, startTime: 1 });
+bookingSchema.index({ status: 1, startTime: 1 });
+bookingSchema.index({ quotation: 1, status: 1 });
+bookingSchema.index({ venue: 1, status: 1, endTime: 1 });
 bookingSchema.index({ holdClaimExpiresAt: 1 }, { expireAfterSeconds: 0 }); // Only affects documents that have the field
 
 module.exports = mongoose.models.Booking || mongoose.model("Booking", bookingSchema);

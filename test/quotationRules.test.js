@@ -144,10 +144,12 @@ describe("quotation dates and slots", () => {
     await expect(quote(inquiry, { space: world.otherSpace._id })).rejects.toMatchObject({ statusCode: 404 });
     const closed = await Space.create({ venue: world.venue._id, name: "Closed", capacity: 50, isActive: false });
     await expect(quote(inquiry, { space: closed._id })).rejects.toMatchObject({ statusCode: 404 });
-    await expect(quote(inquiry, { numberOfGuests: 101 })).rejects.toMatchObject({ statusCode: 400 });
-    await expect(quote(inquiry, { numberOfGuests: 100 })).resolves.toBeTruthy();
     await expect(quote(inquiry, { numberOfGuests: 0 })).rejects.toMatchObject({ statusCode: 400 });
     await expect(quote(inquiry, { numberOfGuests: 1.5 })).rejects.toMatchObject({ statusCode: 400 });
+    // the number is the customer's (see moneyMath.test.js): a request for more than the hall holds, and one for exactly its capacity
+    // (asked for without choosing a hall, since choosing one already refuses more guests than it holds)
+    await expect(quote(await newInquiry({ numberOfGuests: 101, space: undefined }), { numberOfGuests: 101 })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(quote(await newInquiry({ numberOfGuests: 100 }), { numberOfGuests: 100 })).resolves.toBeTruthy();
   });
 
   it("only the venue's own owner can quote", async () => {

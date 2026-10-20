@@ -100,7 +100,7 @@ Measured effect is stated only where I isolated it.
 ### 1. Indexes (isolated: before code + new indexes, label `idx-only`)
 
 Real query shapes now have indexes (`model/venue.js`, `space.js`, `review.js`, `notification.js`, `chat.js`,
-`message.js`, `user.js`, plus extras for bookings/inquiries/quotations/activity logs in `scripts/ensure-indexes.js`):
+`message.js`, `user.js`, `booking.js`, `inquiry.js`, `quotation.js`, `activityLog.js`: every index is declared in its model):
 
 | endpoint | before p50 | indexes only p50 | change |
 |---|---:|---:|---:|
@@ -162,7 +162,7 @@ comes from the venue query instead of a second populate).
 
 - Admin yearly earnings: result memoised for 30 s per process (82 -> 586 req/s). Figures can be up to 30 s old.
 - Mongo pool `maxPoolSize` 10 -> 30 (`MONGO_MAX_POOL`), `minPoolSize` 5, `AUTO_INDEX=0` to stop implicit index builds
-  in production (run `node scripts/ensure-indexes.js` on release). Not isolated individually.
+  in production (then run `node scripts/ensure-indexes.js` on release; with the default there is nothing to run). Not isolated individually.
 - Nearby search used `countDocuments` with `$near`, which MongoDB rejects; it now counts the same circle with `$geoWithin`.
 - Access log (`LOG_REQUESTS=all|errors|off`, default `all` = unchanged). Isolated on the after build, 3 runs each:
 

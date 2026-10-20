@@ -46,7 +46,7 @@ const getSpacesForVenue = async (venueId) => {
 };
 
 const deactivateSpace = async (spaceId, ownerId) => {
-  const space = await Space.findById(spaceId).populate("venue", "owner");
+  const space = await Space.findById(spaceId).populate("venue", "owner status");
   if (!space || !space.venue || space.venue.owner.toString() !== ownerId.toString()) {
     throw new AppError("Space not found or unauthorized", 404);
   }
@@ -60,6 +60,14 @@ const deactivateSpace = async (spaceId, ownerId) => {
   });
   if (hasActiveBookings) {
     throw new AppError("This space has active bookings and cannot be removed", 409);
+  }
+
+  // A live venue needs at least one hall, or customers could never send it a request
+  if (space.venue.status === "approved") {
+    const otherActive = await Space.exists({ venue: space.venue._id, isActive: true, _id: { $ne: space._id } });
+    if (!otherActive) {
+      throw new AppError("A live venue needs at least one hall. Add another hall first, then remove this one.", 409);
+    }
   }
 
   space.isActive = false;

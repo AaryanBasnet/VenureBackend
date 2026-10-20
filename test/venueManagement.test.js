@@ -433,6 +433,23 @@ describe("spaces: POST /api/venues/:venueId/spaces, PUT and DELETE /api/spaces/:
     expect(await kinds()).toEqual(["garden-estates"]);
   });
 
+  it("cannot remove the last hall of a live venue, but can once there is another, and can on a venue that is not live", async () => {
+    const live = await makeVenue(owner);
+    const only = (await as(owner).post(`/api/venues/${live._id}/spaces`, hall)).body.data;
+    const blocked = await as(owner).delete(`/api/spaces/${only._id}`);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.message).toMatch(/needs at least one hall/);
+    expect((await Space.findById(only._id)).isActive).toBe(true);
+
+    const second = (await as(owner).post(`/api/venues/${live._id}/spaces`, { ...hall, name: "Lawn" })).body.data;
+    expect((await as(owner).delete(`/api/spaces/${only._id}`)).status).toBe(200);
+    expect((await as(owner).delete(`/api/spaces/${second._id}`)).status).toBe(409); // now this is the last one
+
+    const draft = await makeVenue(owner, { status: "pending" });
+    const draftHall = (await as(owner).post(`/api/venues/${draft._id}/spaces`, hall)).body.data;
+    expect((await as(owner).delete(`/api/spaces/${draftHall._id}`)).status).toBe(200);
+  });
+
   it("accepts shift overrides and a deposit rule", async () => {
     const venue = await makeVenue(owner);
     const res = await as(owner).post(`/api/venues/${venue._id}/spaces`, {
