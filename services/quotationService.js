@@ -304,7 +304,7 @@ const rejectQuotation = async (quotationId, customerId, io, reason) => {
   const inquiry = await Inquiry.findOneAndUpdate(
     { _id: quotation.inquiry._id, currentQuotation: quotation._id },
     reason
-      ? { status: "pending", currentQuotation: null, customerReason: reason }
+      ? { status: "pending", currentQuotation: null, customerReason: String(reason) } // a plain string, never an object
       : { status: "pending", currentQuotation: null, $unset: { customerReason: 1 } },
     { new: true }
   ).populate("venue", "owner venueName");
