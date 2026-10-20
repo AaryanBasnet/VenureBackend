@@ -185,13 +185,14 @@ const SORTS = {
 const LIST_PROJECTION = "-drinkOptions -priceSortKey";
 
 const getApprovedVenues = async (filters) => {
-  const { search, city, category, lng, lat, radius, guests, amenities, sort, minPrice, maxPrice } = filters;
+  const { search, city, category, spaceType, lng, lat, radius, guests, amenities, sort, minPrice, maxPrice } = filters;
   const { page, limit, skip } = toPaging(filters);
   const query = { status: "approved", isDeleted: false };
 
   if (search) query.venueName = { $regex: escapeRegex(search), $options: "i" };
-  if (city) query["location.city"] = String(city);
-  if (category) query.category = category;
+  if (city) query["location.city"] = { $eq: String(city) };
+  if (category) query.category = { $eq: String(category) };
+  if (spaceType) query.spaceTypes = { $eq: String(spaceType) }; // some active space of this kind
   if (amenities) {
     const wanted = String(amenities).split(",").map((a) => a.trim()).filter(Boolean);
     if (wanted.length) query.amenities = { $all: wanted };
@@ -266,17 +267,16 @@ const getVenueAvailability = async (venueId, { from, to } = {}) => {
   return bookings.map((b) => ({ space: b.space, startTime: b.startTime, endTime: b.endTime }));
 };
 
-// Landing page venue-type cards: how many approved venues exist per category
-const getCategoryCounts = async () => {
-  const rows = await Venue.aggregate([
-    { $match: { status: "approved", isDeleted: false, category: { $ne: null } } },
-    { $group: { _id: "$category", count: { $sum: 1 } } },
+// How many approved venues there are of each venue type (category), and how many have each kind of space.
+// A venue with two kinds of space counts once under each.
+const getTypeCounts = async () => {
+  const live = { status: "approved", isDeleted: false };
+  const [categoryRows, spaceTypeRows] = await Promise.all([
+    Venue.aggregate([{ $match: { ...live, category: { $ne: null } } }, { $group: { _id: "$category", count: { $sum: 1 } } }]),
+    Venue.aggregate([{ $match: live }, { $unwind: "$spaceTypes" }, { $group: { _id: "$spaceTypes", count: { $sum: 1 } } }]),
   ]);
-
-  return rows.reduce((counts, row) => {
-    counts[row._id] = row.count;
-    return counts;
-  }, {});
+  const toMap = (rows) => rows.reduce((counts, row) => ({ ...counts, [row._id]: row.count }), {});
+  return { categories: toMap(categoryRows), spaceTypes: toMap(spaceTypeRows) };
 };
 
 // Landing page "Our Finest Heritage Spaces": admin-curated picks
@@ -382,7 +382,7 @@ module.exports = {
   getApprovedVenueCountByOwner,
   softDeleteVenue,
   getApprovedVenues,
-  getCategoryCounts,
+  getTypeCounts,
   getFeaturedVenues,
   getVenueById,
   getVenueAvailability,

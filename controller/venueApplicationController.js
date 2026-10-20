@@ -19,6 +19,10 @@ exports.submit = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, message: "Application received" });
 });
 
+exports.checkEmail = asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { status: await service.checkEmail(req.body.email) } });
+});
+
 exports.list = asyncHandler(async (req, res) => {
   res.json({ success: true, data: await service.listApplications(req.query) });
 });
@@ -32,7 +36,7 @@ exports.documentLink = asyncHandler(async (req, res) => {
 });
 
 exports.approve = asyncHandler(async (req, res) => {
-  const { venue, emailed } = await service.approveApplication(req.params.id, req.body.category, req.user._id);
+  const { venue, emailed } = await service.approveApplication(req.params.id, req.user._id);
   res.json({
     success: true,
     message: emailed ? "Application approved. The owner has been emailed." : "Application approved, but the email could not be sent. Send the link again from this page.",

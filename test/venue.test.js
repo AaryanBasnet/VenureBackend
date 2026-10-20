@@ -79,19 +79,38 @@ describe("GET /api/venues (list)", () => {
     expect(await names("?search=.*")).toEqual([]);
   });
 
-  it("filters by city and by category", async () => {
-    await makeVenue(owner, { venueName: "KTM Garden", category: "garden-estates" });
-    await makeVenue(owner, { venueName: "Pokhara Garden", category: "garden-estates", location: { ...location, city: "Pokhara" } });
-    await makeVenue(owner, { venueName: "KTM Hall", category: "intimate-halls" });
+  it("filters by city and by venue type", async () => {
+    await makeVenue(owner, { venueName: "KTM Banquet", category: "banquet-party-palace" });
+    await makeVenue(owner, { venueName: "Pokhara Banquet", category: "banquet-party-palace", location: { ...location, city: "Pokhara" } });
+    await makeVenue(owner, { venueName: "KTM Hotel", category: "hotel-resort" });
 
-    expect((await names("?city=Pokhara"))).toEqual(["Pokhara Garden"]);
-    expect((await names("?category=intimate-halls"))).toEqual(["KTM Hall"]);
-    expect((await names("?category=garden-estates&city=Kathmandu"))).toEqual(["KTM Garden"]);
+    expect((await names("?city=Pokhara"))).toEqual(["Pokhara Banquet"]);
+    expect((await names("?category=hotel-resort"))).toEqual(["KTM Hotel"]);
+    expect((await names("?category=banquet-party-palace&city=Kathmandu"))).toEqual(["KTM Banquet"]);
   });
 
-  it("rejects an unknown category or a malformed query with 400", async () => {
+  it("filters by the kind of space a venue has, and combines it with the venue type", async () => {
+    const garden = await makeVenue(owner, { venueName: "Garden Hotel", category: "hotel-resort" });
+    const both = await makeVenue(owner, { venueName: "Palace", category: "banquet-party-palace" });
+    await makeVenue(owner, { venueName: "No Spaces", category: "hotel-resort" });
+    await makeSpace(garden, { name: "Lawn", spaceType: "garden-estates" });
+    await makeSpace(both, { name: "Lawn", spaceType: "garden-estates" });
+    await makeSpace(both, { name: "Roof", spaceType: "rooftop-terraces" });
+    // an inactive space does not count
+    await makeSpace(garden, { name: "Old Roof", spaceType: "rooftop-terraces", isActive: false });
+
+    expect(new Set(await names("?spaceType=garden-estates"))).toEqual(new Set(["Garden Hotel", "Palace"]));
+    expect(await names("?spaceType=rooftop-terraces")).toEqual(["Palace"]);
+    expect(await names("?spaceType=intimate-halls")).toEqual([]);
+    expect(await names("?spaceType=garden-estates&category=hotel-resort")).toEqual(["Garden Hotel"]);
+  });
+
+  it("rejects an unknown venue type, space type or a malformed query with 400", async () => {
     const res = await list("?category=castles");
     expect(res.status).toBe(400);
+    expect((await list("?category=garden-estates")).status).toBe(400); // an old label is no venue type now
+    expect((await list("?spaceType=castles")).status).toBe(400);
+    expect((await list("?spaceType=hotel-resort")).status).toBe(400);
     expect(res.body.success).toBe(false);
     expect((await list("?sort=cheapest")).status).toBe(400);
     expect((await list("?guests=-5")).status).toBe(400);
@@ -173,17 +192,29 @@ describe("GET /api/venues/featured and /api/venues/categories/counts", () => {
     expect(res.body).toEqual({ success: true, data: [] });
   });
 
-  it("counts approved venues per category", async () => {
-    await makeVenue(owner, { category: "garden-estates" });
-    await makeVenue(owner, { category: "garden-estates" });
-    await makeVenue(owner, { category: "intimate-halls" });
-    await makeVenue(owner, { category: "intimate-halls", status: "pending" });
-    await makeVenue(owner, { category: "rooftop-terraces", isDeleted: true });
+  it("counts approved venues per venue type and per kind of space", async () => {
+    const a = await makeVenue(owner, { category: "hotel-resort" });
+    const b = await makeVenue(owner, { category: "hotel-resort" });
+    const c = await makeVenue(owner, { category: "heritage-traditional" });
+    const pending = await makeVenue(owner, { category: "heritage-traditional", status: "pending" });
+    const deleted = await makeVenue(owner, { category: "banquet-party-palace", isDeleted: true });
     await makeVenue(owner, {}); // no category
+    await makeSpace(a, { name: "Lawn", spaceType: "garden-estates" });
+    await makeSpace(a, { name: "Roof", spaceType: "rooftop-terraces" });
+    await makeSpace(b, { name: "Lawn", spaceType: "garden-estates" });
+    await makeSpace(c, { name: "Court", spaceType: "heritage-courtyards" });
+    await makeSpace(pending, { name: "Court", spaceType: "heritage-courtyards" });
+    await makeSpace(deleted, { name: "Lawn", spaceType: "garden-estates" });
 
     const res = await as(null).get("/api/venues/categories/counts");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ success: true, data: { "garden-estates": 2, "intimate-halls": 1 } });
+    expect(res.body).toEqual({
+      success: true,
+      data: {
+        categories: { "hotel-resort": 2, "heritage-traditional": 1 },
+        spaceTypes: { "garden-estates": 2, "rooftop-terraces": 1, "heritage-courtyards": 1 },
+      },
+    });
   });
 });
 

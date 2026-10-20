@@ -50,7 +50,8 @@ const CITIES = [
   ["Dhulikhel", 27.6194, 85.5389], ["Nagarkot", 27.7172, 85.5206], ["Bandipur", 27.9333, 84.4167], ["Lumbini", 27.4833, 83.2762],
   ["Itahari", 26.6646, 87.2718], ["Damak", 26.6667, 87.7], ["Dhangadhi", 28.6833, 80.6], ["Tansen", 27.8667, 83.5469],
 ];
-const CATEGORIES = ["heritage-courtyards", "garden-estates", "intimate-halls", "mountain-retreats", "rooftop-terraces"];
+const CATEGORIES = ["banquet-party-palace", "hotel-resort", "heritage-traditional"];
+const SPACE_TYPES = ["heritage-courtyards", "garden-estates", "intimate-halls", "mountain-retreats", "rooftop-terraces"];
 const AMENITIES = ["Wifi", "Parking", "Air Conditioning", "Stage", "Sound System", "Garden", "Bridal Room", "Generator Backup", "Catering Kitchen", "Valet", "Projector", "Dance Floor", "Rooftop", "Fireworks Area", "Accessible"];
 const EVENT_TYPES = ["Wedding", "Reception", "Birthday", "Corporate", "Engagement", "Bratabandha", "Anniversary", "Conference"];
 const SHIFTS = [["day", 10, 16], ["night", 17, 23], ["full_day", 9, 23]];
@@ -97,7 +98,7 @@ const insertAll = async (col, docs) => {
     const created = new Date(now - int(1, 700) * day);
     const sp = Array.from({ length: int(1, 6) }, (_, s) => ({
       _id: oid(), venue: venueId, name: `${pick(["Grand Hall", "Garden Lawn", "Terrace", "Courtyard", "Banquet", "Mini Hall"])} ${s + 1}`, description: sentence(12),
-      capacity: int(5, 120) * 10, amenities: [pick(AMENITIES)], spaceImages: [], indicativePricePerHour: int(20, 200) * 100, shiftOverrides: [],
+      spaceType: pick(SPACE_TYPES), capacity: int(5, 120) * 10, amenities: [pick(AMENITIES)], spaceImages: [], indicativePricePerHour: int(20, 200) * 100, shiftOverrides: [],
       defaultDepositType: "percentage", defaultDepositValue: 20, isActive: rnd() > 0.05, migratedFromVenue: false, createdAt: created, updatedAt: created, __v: 0,
     }));
     spaces.push(...sp);
@@ -111,7 +112,7 @@ const insertAll = async (col, docs) => {
       drinkOptions: rnd() > 0.5 ? [{ _id: oid(), name: "Welcome drinks", description: sentence(5), items: [sentence(2), sentence(2)] }] : [],
       contactPhone: phone(), status, isDeleted: false, averageRating: 0, totalReviews: 0, isFeatured: status === "approved" && i < 12,
       minPricePerPlate: min, priceSortKey: min === null ? 1e12 : min,
-      maxCapacity: active.length ? Math.max(...active.map((s) => s.capacity)) : 0, spaceCount: active.length, createdAt: created, updatedAt: created, __v: 0,
+      maxCapacity: active.length ? Math.max(...active.map((s) => s.capacity)) : 0, spaceCount: active.length, spaceTypes: [...new Set(active.map((s) => s.spaceType))].sort(), createdAt: created, updatedAt: created, __v: 0,
     });
   }
   const approved = venues.filter((v) => v.status === "approved");

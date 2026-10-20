@@ -28,7 +28,7 @@ beforeAll(async () => {
   const owner = await User.create({ name: "O", email: "o@idx.test", password: "hashedpassword", role: "VenueOwner" });
   await Venue.insertMany(
     Array.from({ length: 30 }, (_, i) => ({
-      owner: owner._id, venueName: `V${i}`, location, status: "approved", category: "garden-estates", isFeatured: i < 3,
+      owner: owner._id, venueName: `V${i}`, location, status: "approved", category: "hotel-resort", isFeatured: i < 3,
       packages: [{ name: "P", pricePerPlate: 500 + i * 10 }],
     }))
   );
@@ -45,7 +45,8 @@ describe("venue list queries use an index", () => {
   const cases = {
     "newest": [base, { createdAt: -1, _id: -1 }],
     "city": [{ ...base, "location.city": "Kathmandu" }, { createdAt: -1, _id: -1 }],
-    "category": [{ ...base, category: "garden-estates" }, { createdAt: -1, _id: -1 }],
+    "category": [{ ...base, category: "hotel-resort" }, { createdAt: -1, _id: -1 }],
+    "space type": [{ ...base, spaceTypes: "garden-estates" }, { createdAt: -1, _id: -1 }],
     "popular": [base, { totalReviews: -1, averageRating: -1, createdAt: -1, _id: -1 }],
     "rating": [base, { averageRating: -1, totalReviews: -1, createdAt: -1, _id: -1 }],
     "price_asc": [base, { priceSortKey: 1, createdAt: -1, _id: -1 }],

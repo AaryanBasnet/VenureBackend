@@ -51,3 +51,17 @@ Owners no longer sign themselves up. They apply at `/list-your-venue/apply` (no 
 - Run `node scripts/ensure-indexes.js` after deploying: it creates the one-open-application-per-email index.
 - `POST /api/auth/register` still accepts `role: "VenueOwner"` (the admin "add owner" screen uses it). Anyone who calls the API directly can still make an owner account that way; closing it is a separate decision.
 
+## 7. Venue types and space types (run once, right after deploying)
+
+A venue is now filed under one of three **venue types** (`Venue.category`: `banquet-party-palace`, `hotel-resort`, `heritage-traditional`), and the older labels (heritage courtyards, garden estates, intimate halls, mountain retreats, rooftop terraces) are the **space type** of each hall (`Space.spaceType`). A venue lists its kinds of space in `Venue.spaceTypes`, kept in step by the Space model.
+
+Existing venues still carry an old category until this is run, so the venue type filter will not find them:
+
+```
+node scripts/migrate-venue-types.js --dry-run   # prints what it would do
+node scripts/migrate-venue-types.js
+node scripts/ensure-indexes.js
+```
+
+It gives each venue's spaces the old category as their space type and files the venue under the nearest venue type (courtyards to heritage and traditional; garden estates and intimate halls to banquet hall and party palace; mountain retreats and rooftop terraces to hotel and resort). That mapping is a best guess: owners can change a venue's type afterwards. Safe to run twice. Take a backup first.
+

@@ -29,10 +29,10 @@ exports.getVenueById = asyncHandler(async (req, res) => {
   }));
 });
 
-exports.getCategoryCounts = asyncHandler(async (req, res) => {
-  await sendCached(req, res, "categoryCounts", { ttlMs: 60000, maxAgeSec: 30 }, async () => ({
+exports.getTypeCounts = asyncHandler(async (req, res) => {
+  await sendCached(req, res, "typeCounts", { ttlMs: 60000, maxAgeSec: 30 }, async () => ({
     success: true,
-    data: await venueService.getCategoryCounts(),
+    data: await venueService.getTypeCounts(),
   }));
 });
 

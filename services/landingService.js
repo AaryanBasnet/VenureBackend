@@ -1,5 +1,6 @@
 const LandingContent = require("../model/landingContent");
 const Venue = require("../model/venue");
+const { getTypeCounts } = require("./venueService");
 const { LANDING_DEFAULTS } = require("./landingDefaults");
 
 const KEY = "home";
@@ -17,12 +18,10 @@ const ensureSeed = async () => {
   await LandingContent.updateOne({ key: KEY }, { $setOnInsert: { key: KEY, content: LANDING_DEFAULTS } }, { upsert: true });
 };
 
-const getCategoryCounts = async () => {
-  const rows = await Venue.aggregate([
-    { $match: { status: "approved", isDeleted: false, category: { $ne: null } } },
-    { $group: { _id: "$category", count: { $sum: 1 } } },
-  ]);
-  return rows.reduce((counts, row) => ({ ...counts, [row._id]: row.count }), {});
+// categoryCounts: venues per venue type; spaceTypeCounts: venues having each kind of space (the home page cards)
+const countsPayload = async () => {
+  const { categories, spaceTypes } = await getTypeCounts();
+  return { categoryCounts: categories, spaceTypeCounts: spaceTypes };
 };
 
 const build = async () => {
@@ -49,7 +48,7 @@ const build = async () => {
 
   return {
     content: { ...content, stories },
-    categoryCounts: await getCategoryCounts(),
+    ...(await countsPayload()),
     updatedAt: doc?.updatedAt ?? null,
   };
 };

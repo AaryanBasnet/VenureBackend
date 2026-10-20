@@ -1,5 +1,6 @@
 const { z } = require("zod");
 const { VENUE_CATEGORIES } = require("../model/venue");
+const { SPACE_TYPES } = require("../model/space");
 
 // Utility to parse JSON strings coming from multipart/form-data
 const parseJsonString = (val) => {
@@ -57,6 +58,7 @@ const searchVenuesSchema = z.object({
   search: z.string().optional(),
   city: z.string().optional(),
   category: z.enum(VENUE_CATEGORIES).optional(),
+  spaceType: z.enum(SPACE_TYPES).optional(), // the venue has a space of this kind
   lng: z.coerce.number().optional(), // For Maps
   lat: z.coerce.number().optional(), // For Maps
   radius: z.coerce.number().default(10), // Miles

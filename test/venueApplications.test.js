@@ -31,7 +31,7 @@ const fields = (overrides = {}) => ({
   area: "Suryabinayak chowk",
   mapLink: "",
   panNumber: "123456789",
-  halls: JSON.stringify([{ name: "Glass Hall", capacity: 300 }, { name: "Lawn", capacity: 600 }]),
+  halls: JSON.stringify([{ name: "Glass Hall", spaceType: "intimate-halls", capacity: 300 }, { name: "Lawn", spaceType: "garden-estates", capacity: 600 }]),
   ...overrides,
 });
 
@@ -69,7 +69,7 @@ describe("applying", () => {
     expect(res.status).toBe(201);
     const saved = await VenueApplication.findOne().lean();
     expect(saved).toMatchObject({ venueName: "Riverside Garden Hall", status: "pending", email: "sita@riverside.test", panNumber: "123456789" });
-    expect(saved.halls).toEqual([{ name: "Glass Hall", capacity: 300 }, { name: "Lawn", capacity: 600 }]);
+    expect(saved.halls).toEqual([{ name: "Glass Hall", spaceType: "intimate-halls", capacity: 300 }, { name: "Lawn", spaceType: "garden-estates", capacity: 600 }]);
     expect(saved.photos).toHaveLength(3);
     expect(saved.location).toMatchObject({ province: "Bagmati", city: "Bhaktapur", area: "Suryabinayak chowk" });
     expect(sendEmail).toHaveBeenCalledTimes(1);
@@ -101,9 +101,12 @@ describe("applying", () => {
     ["map link on a look-alike host", { mapLink: "https://maps.google.com.evil.example/x" }],
     ["map link that is not a web address", { mapLink: "javascript:alert(1)" }],
     ["no halls", { halls: "[]" }],
-    ["hall without a name", { halls: JSON.stringify([{ name: "", capacity: 10 }]) }],
-    ["hall with no capacity", { halls: JSON.stringify([{ name: "A", capacity: 0 }]) }],
-    ["too many halls", { halls: JSON.stringify(Array.from({ length: 7 }, (_, i) => ({ name: `H${i}`, capacity: 10 }))) }],
+    ["hall without a name", { halls: JSON.stringify([{ name: "", spaceType: "intimate-halls", capacity: 10 }]) }],
+    ["hall without a kind of space", { halls: JSON.stringify([{ name: "A", capacity: 10 }]) }],
+    ["hall with an unknown kind of space", { halls: JSON.stringify([{ name: "A", spaceType: "castle", capacity: 10 }]) }],
+    ["hall using a venue type as its kind of space", { halls: JSON.stringify([{ name: "A", spaceType: "hotel-resort", capacity: 10 }]) }],
+    ["hall with no capacity", { halls: JSON.stringify([{ name: "A", spaceType: "intimate-halls", capacity: 0 }]) }],
+    ["too many halls", { halls: JSON.stringify(Array.from({ length: 7 }, (_, i) => ({ name: `H${i}`, spaceType: "intimate-halls", capacity: 10 }))) }],
     ["halls not JSON", { halls: "nonsense" }],
   ])("refuses a bad %s and removes the files it had stored", async (_label, body) => {
     const res = await apply({ body });
@@ -164,6 +167,31 @@ describe("applying", () => {
   });
 });
 
+describe("checking an email before applying", () => {
+  const check = (email, ip = nextIp()) => request(app).post("/api/venue-applications/check-email").set("X-Forwarded-For", ip).send({ email });
+
+  it("says whether the email is free, already has an account, or is already being reviewed", async () => {
+    expect((await check("free@riverside.test")).body.data).toEqual({ status: "available" });
+
+    await makeUser("Customer", { email: "taken@riverside.test" });
+    expect((await check("taken@riverside.test")).body.data).toEqual({ status: "has_account" });
+    expect((await check("  TAKEN@Riverside.test ")).body.data).toEqual({ status: "has_account" });
+
+    await apply();
+    expect((await check("sita@riverside.test")).body.data).toEqual({ status: "pending" });
+    await VenueApplication.updateOne({}, { status: "rejected" });
+    expect((await check("sita@riverside.test")).body.data).toEqual({ status: "available" });
+  });
+
+  it("refuses a malformed email, and limits one address to 30 checks an hour", async () => {
+    expect((await check("not-an-email")).status).toBe(400);
+    const ip = "10.88.0.1";
+    for (let i = 0; i < 30; i++) expect((await check(`a${i}@x.test`, ip)).status).toBe(200);
+    expect((await check("one-more@x.test", ip)).status).toBe(429);
+    expect((await check("one-more@x.test", "10.88.0.2")).status).toBe(200);
+  });
+});
+
 describe("reviewing", () => {
   let id;
   beforeEach(async () => {
@@ -177,7 +205,7 @@ describe("reviewing", () => {
       const status = who ? 403 : 401;
       expect((await as(who).get("/api/venue-applications")).status).toBe(status);
       expect((await as(who).get(`/api/venue-applications/${id}`)).status).toBe(status);
-      expect((await as(who).post(`/api/venue-applications/${id}/approve`, { category: "garden-estates" })).status).toBe(status);
+      expect((await as(who).post(`/api/venue-applications/${id}/approve`)).status).toBe(status);
       expect((await as(who).post(`/api/venue-applications/${id}/reject`, { reason: "No good reason" })).status).toBe(status);
       expect((await as(who).get(`/api/venue-applications/${id}/documents/panCert/link`)).status).toBe(status);
     }
@@ -195,10 +223,11 @@ describe("reviewing", () => {
     expect(JSON.stringify(all.body)).not.toContain("publicId");
   });
 
-  it("shows one application with a suggested site category, and never the stored file ids", async () => {
+  it("shows one application, and never the stored file ids", async () => {
     const res = await as(admin).get(`/api/venue-applications/${id}`);
     expect(res.status).toBe(200);
-    expect(res.body.data).toMatchObject({ venueName: "Riverside Garden Hall", suggestedCategory: "garden-estates", panNumber: "123456789" });
+    expect(res.body.data).toMatchObject({ venueName: "Riverside Garden Hall", venueType: "banquet-party-palace", panNumber: "123456789" });
+    expect(res.body.data.halls.map((h) => h.spaceType)).toEqual(["intimate-halls", "garden-estates"]);
     expect(res.body.data.registrationCert).toMatchObject({ originalName: "registration.pdf", mimeType: "application/pdf" });
     expect(JSON.stringify(res.body)).not.toContain("publicId");
     expect(JSON.stringify(res.body)).not.toContain("setupTokenHash");
@@ -235,17 +264,15 @@ describe("reviewing", () => {
     expect(sendEmail.mock.calls.at(-1)[0].html).not.toContain("<script>");
   });
 
-  it("needs a reason to reject, and a valid site category to approve", async () => {
+  it("needs a reason to reject", async () => {
     expect((await as(admin).post(`/api/venue-applications/${id}/reject`, { reason: "no" })).status).toBe(400);
-    expect((await as(admin).post(`/api/venue-applications/${id}/approve`, { category: "castle" })).status).toBe(400);
-    expect((await as(admin).post(`/api/venue-applications/${id}/approve`, {})).status).toBe(400);
     expect((await VenueApplication.findById(id)).status).toBe("pending");
   });
 });
 
 describe("approving, and choosing a password", () => {
   let id;
-  const approve = (category = "garden-estates") => as(admin).post(`/api/venue-applications/${id}/approve`, { category });
+  const approve = () => as(admin).post(`/api/venue-applications/${id}/approve`);
   const linkToken = () => {
     const mail = sendEmail.mock.calls.map((c) => c[0]).filter((m) => /Choose your password/.test(m.subject)).at(-1);
     return /token=([a-f0-9]{64})/.exec(mail.html)[1];
@@ -265,12 +292,13 @@ describe("approving, and choosing a password", () => {
     expect(owner.password).toBeUndefined();
 
     const venue = await Venue.findOne({ owner: owner._id });
-    expect(venue).toMatchObject({ venueName: "Riverside Garden Hall", status: "approved", category: "garden-estates", venueType: "banquet-party-palace" });
+    expect(venue).toMatchObject({ venueName: "Riverside Garden Hall", status: "approved", category: "banquet-party-palace" });
+    expect(venue.spaceTypes).toEqual(["garden-estates", "intimate-halls"]);
     expect(venue.location).toMatchObject({ address: "Suryabinayak chowk", city: "Bhaktapur", state: "Bagmati", country: "Nepal" });
     expect(venue.geoCoordinates.coordinates).toEqual([85.43, 27.67]);
     expect(venue.venueImages).toHaveLength(3);
     const spaces = await Space.find({ venue: venue._id }).sort("capacity");
-    expect(spaces.map((s) => [s.name, s.capacity])).toEqual([["Glass Hall", 300], ["Lawn", 600]]);
+    expect(spaces.map((s) => [s.name, s.spaceType, s.capacity])).toEqual([["Glass Hall", "intimate-halls", 300], ["Lawn", "garden-estates", 600]]);
 
     const saved = await VenueApplication.findById(id);
     expect(saved).toMatchObject({ status: "approved" });
@@ -375,7 +403,7 @@ describe("approving, and choosing a password", () => {
   });
 
   it("returns 404 for an application that does not exist", async () => {
-    expect((await as(admin).post(`/api/venue-applications/${objectId()}/approve`, { category: "garden-estates" })).status).toBe(404);
+    expect((await as(admin).post(`/api/venue-applications/${objectId()}/approve`)).status).toBe(404);
   });
 
   describe("the link", () => {

@@ -24,8 +24,8 @@ router.get(
   venueController.getAllApprovedVenues
 );
 
-// Landing page: per-category counts for the venue-type cards. Must come before "/:id".
-router.get("/categories/counts", venueController.getCategoryCounts);
+// Counts per venue type and per kind of space. Must come before "/:id".
+router.get("/categories/counts", venueController.getTypeCounts);
 
 // Landing page: admin-curated featured venues. Must come before "/:id".
 router.get("/featured", venueController.getFeaturedVenues);

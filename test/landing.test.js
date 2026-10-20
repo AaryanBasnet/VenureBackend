@@ -23,7 +23,7 @@ const makeVenue = (extra = {}) =>
     venueName: "Landing Test Venue",
     location: { address: "1 Test St", city: "Kathmandu", state: "Bagmati", country: "Nepal" },
     status: "approved",
-    category: "garden-estates",
+    category: "banquet-party-palace",
     ...extra,
   });
 
@@ -70,6 +70,7 @@ describe("GET /api/landing", () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.content).toEqual(LANDING_DEFAULTS);
     expect(res.body.data.categoryCounts).toEqual({});
+    expect(res.body.data.spaceTypeCounts).toEqual({});
     expect(res.headers["cache-control"]).toBe("public, max-age=60");
     expect(res.headers.etag).toBeTruthy();
   });
@@ -80,13 +81,21 @@ describe("GET /api/landing", () => {
     expect(second.status).toBe(304);
   });
 
-  it("includes live approved-venue counts per category", async () => {
-    await makeVenue({ venueName: "A" });
-    await makeVenue({ venueName: "B" });
-    await makeVenue({ venueName: "C", category: "rooftop-terraces" });
-    await makeVenue({ venueName: "Hidden", status: "pending" });
+  it("includes live approved-venue counts per venue type and per kind of space", async () => {
+    const a = await makeVenue({ venueName: "A" });
+    const b = await makeVenue({ venueName: "B" });
+    const c = await makeVenue({ venueName: "C", category: "hotel-resort" });
+    const hidden = await makeVenue({ venueName: "Hidden", status: "pending" });
+    const Space = require("../model/space");
+    await Space.create({ venue: a._id, name: "Lawn", capacity: 100, spaceType: "garden-estates" });
+    await Space.create({ venue: a._id, name: "Terrace", capacity: 50, spaceType: "rooftop-terraces" });
+    await Space.create({ venue: b._id, name: "Lawn", capacity: 100, spaceType: "garden-estates" });
+    await Space.create({ venue: c._id, name: "Roof", capacity: 60, spaceType: "rooftop-terraces" });
+    await Space.create({ venue: hidden._id, name: "Lawn", capacity: 60, spaceType: "garden-estates" });
     const res = await request(app).get("/api/landing");
-    expect(res.body.data.categoryCounts).toEqual({ "garden-estates": 2, "rooftop-terraces": 1 });
+    expect(res.body.data.categoryCounts).toEqual({ "banquet-party-palace": 2, "hotel-resort": 1 });
+    // a venue with two kinds of space counts once under each; pending venues do not count
+    expect(res.body.data.spaceTypeCounts).toEqual({ "garden-estates": 2, "rooftop-terraces": 2 });
   });
 
   it("serves from the in-memory cache until it is invalidated", async () => {

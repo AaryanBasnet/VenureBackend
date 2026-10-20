@@ -22,7 +22,7 @@ const SAMPLE_VENUES = [
     venueName: 'Grand Ballroom',
     location: { address: 'Kamaladi Marg', city: 'Kathmandu', state: 'Bagmati', country: 'Nepal' },
     coords: [85.3206, 27.7088],
-    category: 'intimate-halls',
+    category: 'banquet-party-palace', spaceType: 'intimate-halls',
     capacity: 300,
     pricePerHour: 500,
     amenities: ['Wifi', 'Parking', 'Catering', 'Sound System'],
@@ -34,7 +34,7 @@ const SAMPLE_VENUES = [
     venueName: 'Riverside Garden Hall',
     location: { address: '45 Lakeside Marg', city: 'Kathmandu', state: 'Bagmati', country: 'Nepal' },
     coords: [85.324, 27.7172],
-    category: 'garden-estates',
+    category: 'banquet-party-palace', spaceType: 'garden-estates',
     capacity: 150,
     pricePerHour: 250,
     amenities: ['Wifi', 'Parking', 'Garden'],
@@ -46,7 +46,7 @@ const SAMPLE_VENUES = [
     venueName: 'Skyline Conference Centre',
     location: { address: '10 Durbar Marg', city: 'Kathmandu', state: 'Bagmati', country: 'Nepal' },
     coords: [85.3188, 27.7115],
-    category: 'rooftop-terraces',
+    category: 'hotel-resort', spaceType: 'rooftop-terraces',
     capacity: 80,
     pricePerHour: 150,
     amenities: ['Wifi', 'Projector', 'Air Conditioning'],
@@ -58,7 +58,7 @@ const SAMPLE_VENUES = [
     venueName: 'Lakeview Pavilion',
     location: { address: '7 Lakeside Road', city: 'Pokhara', state: 'Gandaki', country: 'Nepal' },
     coords: [83.9596, 28.2096],
-    category: 'mountain-retreats',
+    category: 'hotel-resort', spaceType: 'mountain-retreats',
     capacity: 200,
     pricePerHour: 300,
     amenities: ['Parking', 'Catering', 'Lake View'],
@@ -96,7 +96,7 @@ const seedData = async () => {
     logger.info('Seeding: admin, owner and customer accounts ready.');
 
     // Upsert by name so re-running never creates duplicates
-    for (const { coords, capacity, pricePerHour, ...venue } of SAMPLE_VENUES) {
+    for (const { coords, capacity, pricePerHour, spaceType, ...venue } of SAMPLE_VENUES) {
       const saved = await Venue.findOneAndUpdate(
         { venueName: venue.venueName, owner: owner._id },
         {
@@ -112,7 +112,7 @@ const seedData = async () => {
       // capacity/pricePerHour now live on Space, not Venue — one default space per sample venue.
       await Space.findOneAndUpdate(
         { venue: saved._id, name: 'Main Space' },
-        { venue: saved._id, name: 'Main Space', capacity, indicativePricePerHour: pricePerHour, isActive: true },
+        { venue: saved._id, name: 'Main Space', capacity, spaceType, indicativePricePerHour: pricePerHour, isActive: true },
         { upsert: true, setDefaultsOnInsert: true, runValidators: true }
       );
     }

@@ -91,6 +91,12 @@ const applicationLimiter = rateLimit({
   max: 8,
   message: limitMessage("Too many applications from this address. Please try again later."),
 });
+// The early "is this email free" check: generous for real use, tight enough that it is no tool for listing accounts
+const applicationCheckLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  message: limitMessage("Too many checks from this address. Please try again later."),
+});
 const setupPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -99,6 +105,7 @@ const setupPasswordLimiter = rateLimit({
 
 module.exports = {
   applicationLimiter,
+  applicationCheckLimiter,
   setupPasswordLimiter,
   loginLimiter,
   forgotPasswordLimiter,

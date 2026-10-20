@@ -1,6 +1,6 @@
 const { z } = require("zod");
 const { VENUE_TYPES } = require("../model/venueApplication");
-const { VENUE_CATEGORIES } = require("../model/venue");
+const { SPACE_TYPES } = require("../model/space");
 const { strongPassword } = require("./authValidators");
 
 // Multipart bodies arrive as strings, so the structured fields come in as JSON text.
@@ -34,6 +34,7 @@ const isGoogleMapsLink = (text) => {
 
 const hall = z.object({
   name: z.string().trim().min(1, "Name every hall").max(80),
+  spaceType: z.enum(SPACE_TYPES, { message: "Choose the kind of space for every hall" }),
   capacity: z.coerce.number().int().min(1, "A hall must hold at least 1 guest").max(100000),
 });
 
@@ -69,10 +70,8 @@ const rejectApplicationSchema = z.object({
   reason: z.string().trim().min(5, "Tell the applicant why").max(1000),
 });
 
-// The category the venue is listed under on the site, chosen by the reviewer
-const approveApplicationSchema = z.object({
-  category: z.enum(VENUE_CATEGORIES, { message: "Choose a category for the site" }),
-});
+// Is this email free to apply with? (checked early so nobody fills six steps first)
+const checkEmailSchema = z.object({ email: z.string().trim().toLowerCase().email().max(120) });
 
 const listApplicationsSchema = z.object({
   status: z.enum(["pending", "approved", "rejected"]).optional(),
@@ -88,7 +87,7 @@ const setupPasswordSchema = z.object({
 module.exports = {
   submitApplicationSchema,
   rejectApplicationSchema,
-  approveApplicationSchema,
+  checkEmailSchema,
   listApplicationsSchema,
   setupPasswordSchema,
 };

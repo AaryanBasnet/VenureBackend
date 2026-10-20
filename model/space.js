@@ -9,6 +9,9 @@ const imageSchema = new mongoose.Schema(
 // venues actually book (see services/shiftService.js for the resolved hours).
 const SHIFT_NAMES = ["day", "night", "full_day"];
 
+// What kind of space a hall is. A venue (hotel, banquet hall, heritage house) can hold several kinds.
+const SPACE_TYPES = ["heritage-courtyards", "garden-estates", "intimate-halls", "mountain-retreats", "rooftop-terraces"];
+
 const shiftOverrideSchema = new mongoose.Schema(
   {
     shift: { type: String, enum: SHIFT_NAMES, required: true },
@@ -34,6 +37,10 @@ const SpaceSchema = new mongoose.Schema(
     description: {
       type: String,
       maxlength: 1000,
+    },
+    spaceType: {
+      type: String,
+      enum: SPACE_TYPES,
     },
     capacity: {
       type: Number,
@@ -85,7 +92,7 @@ const SpaceSchema = new mongoose.Schema(
 SpaceSchema.index({ venue: 1, isActive: 1 });
 SpaceSchema.index({ venue: 1, isActive: 1, capacity: -1 });
 
-// Keep Venue.maxCapacity / Venue.spaceCount (largest active space, active space count) in step with
+// Keep Venue.maxCapacity / spaceCount / spaceTypes (largest active space, active space count, kinds of space) in step with
 // space writes, so public lists need no per-request aggregation. Recomputed from the truth every
 // time, so concurrent writes converge on the right value.
 const syncVenueCapacity = async (venueRef) => {
@@ -95,11 +102,11 @@ const syncVenueCapacity = async (venueRef) => {
   const Venue = mongoose.model("Venue");
   const [row] = await mongoose.model("Space").aggregate([
     { $match: { venue: venueId, isActive: true } },
-    { $group: { _id: null, maxCapacity: { $max: "$capacity" }, spaceCount: { $sum: 1 } } },
+    { $group: { _id: null, maxCapacity: { $max: "$capacity" }, spaceCount: { $sum: 1 }, spaceTypes: { $addToSet: "$spaceType" } } },
   ]);
   await Venue.updateOne(
     { _id: venueId },
-    { $set: { maxCapacity: row?.maxCapacity ?? 0, spaceCount: row?.spaceCount ?? 0 } },
+    { $set: { maxCapacity: row?.maxCapacity ?? 0, spaceCount: row?.spaceCount ?? 0, spaceTypes: (row?.spaceTypes ?? []).filter(Boolean).sort() } },
     { timestamps: false }
   );
 };
@@ -111,4 +118,5 @@ SpaceSchema.post("deleteOne", { document: true, query: false }, (doc) => syncVen
 
 module.exports = mongoose.models.Space || mongoose.model("Space", SpaceSchema);
 module.exports.SHIFT_NAMES = SHIFT_NAMES;
+module.exports.SPACE_TYPES = SPACE_TYPES;
 module.exports.syncVenueCapacity = syncVenueCapacity;
