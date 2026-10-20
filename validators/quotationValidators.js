@@ -25,4 +25,7 @@ const createQuotationSchema = z.object({
   notes: z.string().max(1000).optional(),
 });
 
-module.exports = { createQuotationSchema };
+const rejectQuotationSchema = z.object({ reason: z.string().trim().max(300, "Keep the reason under 300 characters").optional() });
+
+module.exports = {
+  rejectQuotationSchema, createQuotationSchema };

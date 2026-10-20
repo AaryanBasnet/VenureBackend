@@ -178,7 +178,8 @@ const createQuotation = async (inquiryId, ownerId, payload, io) => {
       status: { $in: ["pending", "quoted"] },
       $or: [{ currentQuotation: null }, { currentQuotation: { $lt: quotation._id } }],
     },
-    { status: "quoted", currentQuotation: quotation._id, respondedAt: new Date() }
+    // The venue has replied, so what the customer said last time (cancelled or turned down a quotation) is out of date
+    { $set: { status: "quoted", currentQuotation: quotation._id, respondedAt: new Date() }, $unset: { customerReason: 1 } }
   );
   if (!updated) {
     await Quotation.updateOne({ _id: quotation._id, status: "sent" }, { status: "superseded" });
@@ -284,7 +285,7 @@ const acceptQuotation = async (quotationId, customerId) => {
   return quotation;
 };
 
-const rejectQuotation = async (quotationId, customerId, io) => {
+const rejectQuotation = async (quotationId, customerId, io, reason) => {
   const quotation = await Quotation.findById(quotationId).populate("inquiry");
   if (!quotation || quotation.inquiry.customer.toString() !== customerId.toString()) {
     throw new AppError("Quotation not found or unauthorized", 404);
@@ -302,14 +303,16 @@ const rejectQuotation = async (quotationId, customerId, io) => {
 
   const inquiry = await Inquiry.findOneAndUpdate(
     { _id: quotation.inquiry._id, currentQuotation: quotation._id },
-    { status: "pending", currentQuotation: null },
+    reason
+      ? { status: "pending", currentQuotation: null, customerReason: reason }
+      : { status: "pending", currentQuotation: null, $unset: { customerReason: 1 } },
     { new: true }
   ).populate("venue", "owner venueName");
 
   if (inquiry) {
     await notifyOwner(
       inquiry.venue,
-      `Your quotation for "${inquiry.venue.venueName}" was declined by the customer.`,
+      `Your quotation for "${inquiry.venue.venueName}" was declined by the customer${reason ? `: ${reason}` : "."}`,
       `/owner/inquiries/${inquiry._id}`,
       io
     );

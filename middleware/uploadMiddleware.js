@@ -33,6 +33,10 @@ const storage = new CloudinaryStorage({
       folderPath = `venure/venues/${venueId}`;
     }
 
+    if (file.fieldname === "spaceImages") {
+      // Photos of one hall, shown on the venue page: ordinary public images
+      return { folder: "venure/spaces", format: "webp", allowed_formats: ["jpg", "jpeg", "png", "webp"], transformation: [{ width: 1600, crop: "limit", quality: "auto" }] };
+    }
     if (file.fieldname === "applicationPhotos") {
       // Shown on the venue page once the application is approved, so these are ordinary public images.
       return { folder: "venure/applications", format: "webp", allowed_formats: ["jpg", "jpeg", "png", "webp"], transformation: [{ width: 1600, crop: "limit", quality: "auto" }] };
@@ -110,7 +114,11 @@ const applicationUpload = multer({
   fileFilter,
 });
 
+const SPACE_IMAGE_MAX = 6;
+
 module.exports = {
+  spaceImages: () => upload.array("spaceImages", SPACE_IMAGE_MAX),
+  SPACE_IMAGE_MAX,
   venueApplicationFiles: () =>
     applicationUpload.fields([
       { name: "applicationPhotos", maxCount: APPLICATION_MAX_PHOTOS },

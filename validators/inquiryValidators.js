@@ -15,4 +15,9 @@ const createInquirySchema = z.object({
   phoneNumber: z.string().min(7, "Valid phone number is required"),
 });
 
-module.exports = { createInquirySchema };
+// Declining needs a reason the customer can read; cancelling is allowed without one
+const reason = z.string().trim().max(300, "Keep the reason under 300 characters");
+const declineInquirySchema = z.object({ reason: z.string({ message: "Tell the customer why" }).trim().min(3, "Tell the customer why").max(300, "Keep the reason under 300 characters") });
+const cancelInquirySchema = z.object({ reason: reason.optional() });
+
+module.exports = { createInquirySchema, declineInquirySchema, cancelInquirySchema };

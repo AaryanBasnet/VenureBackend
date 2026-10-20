@@ -40,7 +40,7 @@ exports.acceptQuotation = asyncHandler(async (req, res) => {
 
 exports.rejectQuotation = asyncHandler(async (req, res) => {
   const io = req.app.get("io");
-  const quotation = await quotationService.rejectQuotation(req.params.id, req.user._id, io);
+  const quotation = await quotationService.rejectQuotation(req.params.id, req.user._id, io, req.body?.reason);
 
   res.status(200).json({
     success: true,

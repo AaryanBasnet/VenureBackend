@@ -67,4 +67,61 @@ const deactivateSpace = async (spaceId, ownerId) => {
   return space;
 };
 
-module.exports = { createSpace, updateSpace, getSpacesForVenue, deactivateSpace, withResolvedShifts };
+/* ================= PHOTOS OF A HALL ================= */
+
+const { cloudinary, SPACE_IMAGE_MAX } = require("../middleware/uploadMiddleware");
+const logger = require("../utils/logger");
+
+const discard = (files) =>
+  Promise.all(
+    files.map((f) => cloudinary.uploader.destroy(f.filename || f.public_id).catch((e) => logger.warn(`Could not remove ${f.filename}: ${e.message}`)))
+  );
+
+// Checked before the upload, so a request that cannot succeed stores nothing
+const assertCanAddImages = async (spaceId, ownerId) => {
+  const space = await Space.findById(spaceId).populate("venue", "owner");
+  if (!space || !space.isActive || !space.venue || String(space.venue.owner) !== String(ownerId)) {
+    throw new AppError("Space not found or unauthorized", 404);
+  }
+  if (space.spaceImages.length >= SPACE_IMAGE_MAX) throw new AppError(`A hall can have up to ${SPACE_IMAGE_MAX} photos`, 400);
+};
+
+const addSpaceImages = async (spaceId, ownerId, files = []) => {
+  if (!files.length) throw new AppError("Choose a photo to add", 400);
+  const images = files.map((f) => ({ filename: f.filename || f.public_id, url: f.path || f.secure_url }));
+
+  // One atomic step: the owner and the limit are re-checked at the moment of writing, so two uploads at once cannot go over
+  const ownerVenues = await Venue.find({ owner: ownerId, isDeleted: false }).select("_id").lean();
+  const space = await Space.findOneAndUpdate(
+    {
+      _id: spaceId,
+      isActive: true,
+      venue: { $in: ownerVenues.map((v) => v._id) },
+      $expr: { $lte: [{ $add: [{ $size: "$spaceImages" }, images.length] }, SPACE_IMAGE_MAX] },
+    },
+    { $push: { spaceImages: { $each: images } } },
+    { new: true }
+  );
+  if (!space) {
+    await discard(files);
+    throw new AppError(`This hall cannot take more photos (up to ${SPACE_IMAGE_MAX})`, 409);
+  }
+  return withResolvedShifts(space);
+};
+
+const removeSpaceImage = async (spaceId, ownerId, filename) => {
+  const ownerVenues = await Venue.find({ owner: ownerId, isDeleted: false }).select("_id").lean();
+  const space = await Space.findOneAndUpdate(
+    { _id: spaceId, venue: { $in: ownerVenues.map((v) => v._id) }, "spaceImages.filename": filename },
+    { $pull: { spaceImages: { filename } } },
+    { new: true }
+  );
+  if (!space) throw new AppError("Photo not found", 404);
+  await discard([{ filename }]);
+  return withResolvedShifts(space);
+};
+
+module.exports = {
+  createSpace, updateSpace, getSpacesForVenue, deactivateSpace, withResolvedShifts,
+  assertCanAddImages, addSpaceImages, removeSpaceImage,
+};
