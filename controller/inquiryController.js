@@ -13,7 +13,7 @@ exports.createInquiry = asyncHandler(async (req, res) => {
 });
 
 exports.getMyInquiries = asyncHandler(async (req, res) => {
-  const inquiries = await inquiryService.getInquiriesForCustomer(req.user._id);
+  const inquiries = await inquiryService.getInquiriesForCustomer(req.user._id, req.query);
 
   res.status(200).json({
     success: true,
@@ -22,7 +22,7 @@ exports.getMyInquiries = asyncHandler(async (req, res) => {
 });
 
 exports.getOwnerInquiries = asyncHandler(async (req, res) => {
-  const inquiries = await inquiryService.getInquiriesForOwner(req.user._id);
+  const inquiries = await inquiryService.getInquiriesForOwner(req.user._id, req.query);
 
   res.status(200).json({
     success: true,

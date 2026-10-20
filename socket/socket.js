@@ -83,6 +83,18 @@ function setupSocket(server, isAllowedOrigin) {
       }
     });
 
+    // The user opened a conversation: mark what they received as read and let the other side see it
+    socket.on("markSeen", async (payload = {}) => {
+      try {
+        const { changed, otherUserId } = await chatService.markChatSeen(payload.chatId, socket.userId);
+        if (changed && otherUserId) io.to(otherUserId).emit("messagesSeen", { chatId: String(payload.chatId) });
+        // The reader's other tabs update their unread badge
+        socket.to(socket.userId).emit("messagesRead", { chatId: String(payload.chatId) });
+      } catch (error) {
+        logger.warn({ message: "Error handling markSeen", chatId: payload.chatId, error: error.message });
+      }
+    });
+
     socket.on("disconnect", () => {
       logger.info({ message: "Socket disconnected", socketId: socket.id });
     });

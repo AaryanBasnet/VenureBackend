@@ -3,6 +3,7 @@ const Venue = require("../model/venue");
 const Space = require("../model/space");
 const Notification = require("../model/notification");
 const AppError = require("../utils/AppError");
+const { readPage, pagedList } = require("../utils/listPage");
 const logger = require("../utils/logger");
 const { cloudinary, ATTACHMENT_MAX_COUNT } = require("../middleware/uploadMiddleware");
 const { nepalDaysBetween, nepalCalendarDay, lastBookableDay } = require("./shiftService");
@@ -58,22 +59,35 @@ const createInquiry = async (payload, customerId, io) => {
   return inquiry;
 };
 
-const getInquiriesForCustomer = async (customerId) => {
-  return await Inquiry.find({ customer: customerId })
-    .populate("venue", "venueName location venueImages")
-    .populate("space", "name capacity")
-    .sort("-createdAt");
+// A request that has become a booking counts as "booked" whatever its own status says
+const INQUIRY_GROUPS = {
+  pending: { status: "pending", booking: null },
+  quoted: { status: { $in: ["quoted", "accepted"] }, booking: null },
+  booked: { booking: { $ne: null } },
+  closed: { status: { $in: ["declined", "cancelled", "expired"] }, booking: null },
+  open: { status: { $in: ["pending", "quoted", "accepted"] }, booking: null },
 };
 
-const getInquiriesForOwner = async (ownerId) => {
+const getInquiriesForCustomer = async (customerId, query = {}) => {
+  const page = readPage(query);
+  const populate = [["venue", "venueName location venueImages"], ["space", "name capacity"]];
+  if (!page.paged) return await Inquiry.find({ customer: customerId }).populate("venue", "venueName location venueImages").populate("space", "name capacity").sort("-createdAt");
+
+  const base = { customer: customerId };
+  if (query.venue) base.venue = { $eq: String(query.venue) };
+  return await pagedList({ model: Inquiry, base, groups: INQUIRY_GROUPS, group: query.group, ...page, sort: "-createdAt", populate });
+};
+
+const getInquiriesForOwner = async (ownerId, query = {}) => {
   const ownerVenues = await Venue.find({ owner: ownerId }).select("_id");
   const venueIds = ownerVenues.map((v) => v._id);
 
-  return await Inquiry.find({ venue: { $in: venueIds } })
-    .populate("venue", "venueName")
-    .populate("space", "name capacity")
-    .populate("customer", "name email phone")
-    .sort("-createdAt");
+  const page = readPage(query);
+  const populate = [["venue", "venueName"], ["space", "name capacity"], ["customer", "name email phone"]];
+  if (!page.paged) {
+    return await Inquiry.find({ venue: { $in: venueIds } }).populate("venue", "venueName").populate("space", "name capacity").populate("customer", "name email phone").sort("-createdAt");
+  }
+  return await pagedList({ model: Inquiry, base: { venue: { $in: venueIds } }, groups: INQUIRY_GROUPS, group: query.group, ...page, sort: "-createdAt", populate });
 };
 
 const getInquiryById = async (inquiryId, user) => {

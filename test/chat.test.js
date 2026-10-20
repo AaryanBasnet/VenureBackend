@@ -235,3 +235,28 @@ describe("saving a message (what the socket handler calls)", () => {
     expect(await Notification.countDocuments()).toBe(0);
   });
 });
+
+describe("marking a conversation as seen (what the socket handler calls)", () => {
+  it("clears my unread messages in that chat only, and says who to tell", async () => {
+    const second = await makeVenue(owner, { venueName: "Other Hall" });
+    const a = (await startChat(customer, owner)).body.data._id;
+    const b = (await startChat(customer, owner, second._id)).body.data._id;
+    await chatService.saveMessage(a, String(owner._id), "one");
+    await chatService.saveMessage(a, String(owner._id), "two");
+    await chatService.saveMessage(b, String(owner._id), "elsewhere");
+
+    const result = await chatService.markChatSeen(a, customer._id);
+    expect(result).toEqual({ changed: 2, otherUserId: String(owner._id) });
+    expect((await as(customer).get("/api/chats/unread-count")).body.data.unreadCount).toBe(1);
+    expect((await chatService.markChatSeen(a, customer._id)).changed).toBe(0);
+  });
+
+  it("never marks the other person's messages, and refuses a stranger or a bad id", async () => {
+    const a = (await startChat(customer, owner)).body.data._id;
+    await chatService.saveMessage(a, String(customer._id), "to the owner");
+    await chatService.markChatSeen(a, customer._id);
+    expect((await as(owner).get("/api/chats/unread-count")).body.data.unreadCount).toBe(1);
+    await expect(chatService.markChatSeen(a, stranger._id)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(chatService.markChatSeen("nope", customer._id)).rejects.toMatchObject({ statusCode: 403 });
+  });
+});
